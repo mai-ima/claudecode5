@@ -34,7 +34,7 @@ export class SinglePlayerSession implements Session {
   }
 
   resultLines(): string[] {
-    return [`Score: ${this.engine.getScore()}`];
+    return [`スコア ${this.engine.getScore().toLocaleString()}`];
   }
 
   togglePause(): void {
@@ -89,7 +89,7 @@ export class LocalVersusSession implements Session {
 
   resultLines(): string[] {
     const winner = this.versus.getWinner();
-    return [winner === 0 ? 'Player 1 Wins!' : 'Player 2 Wins!'];
+    return [winner === 0 ? 'プレイヤー1の勝ち！' : 'プレイヤー2の勝ち！'];
   }
 
   togglePause(): void {
@@ -152,9 +152,9 @@ export class OnlineVersusSession implements Session {
   }
 
   resultLines(): string[] {
-    if (this.local.isGameOver() && !this.dummy.isGameOver()) return ['You Lose'];
-    if (this.dummy.isGameOver() && !this.local.isGameOver()) return ['You Win!'];
-    return ['Game Over'];
+    if (this.local.isGameOver() && !this.dummy.isGameOver()) return ['あなたの負け…'];
+    if (this.dummy.isGameOver() && !this.local.isGameOver()) return ['あなたの勝ち！'];
+    return ['引き分け'];
   }
 
   togglePause(): void {

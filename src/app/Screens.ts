@@ -2,6 +2,14 @@
 export interface OverlayButton {
   label: string;
   onClick: () => void;
+  primary?: boolean;
+}
+
+export interface OverlayOptions {
+  /** パネルに付与する追加クラス（menu / result など）。 */
+  variant?: string;
+  /** タイトル下の小見出し。 */
+  subtitle?: string;
 }
 
 export class Overlay {
@@ -13,14 +21,26 @@ export class Overlay {
     parent.appendChild(this.root);
   }
 
-  show(title: string, lines: string[], buttons: OverlayButton[]): void {
+  show(
+    title: string,
+    lines: string[],
+    buttons: OverlayButton[],
+    options: OverlayOptions = {},
+  ): void {
     this.root.innerHTML = '';
     const panel = document.createElement('div');
-    panel.className = 'overlay-panel';
+    panel.className = `overlay-panel${options.variant ? ` ${options.variant}` : ''}`;
 
     const h = document.createElement('h1');
     h.textContent = title;
     panel.appendChild(h);
+
+    if (options.subtitle) {
+      const sub = document.createElement('p');
+      sub.className = 'subtitle';
+      sub.textContent = options.subtitle;
+      panel.appendChild(sub);
+    }
 
     for (const line of lines) {
       const p = document.createElement('p');
@@ -28,11 +48,17 @@ export class Overlay {
       panel.appendChild(p);
     }
 
-    for (const btn of buttons) {
-      const b = document.createElement('button');
-      b.textContent = btn.label;
-      b.addEventListener('click', btn.onClick);
-      panel.appendChild(b);
+    if (buttons.length > 0) {
+      const group = document.createElement('div');
+      group.className = 'btn-group';
+      for (const btn of buttons) {
+        const b = document.createElement('button');
+        b.textContent = btn.label;
+        if (btn.primary) b.classList.add('primary');
+        b.addEventListener('click', btn.onClick);
+        group.appendChild(b);
+      }
+      panel.appendChild(group);
     }
 
     this.root.appendChild(panel);
@@ -48,5 +74,9 @@ export class Overlay {
 
   hide(): void {
     this.root.classList.add('hidden');
+  }
+
+  isVisible(): boolean {
+    return !this.root.classList.contains('hidden');
   }
 }

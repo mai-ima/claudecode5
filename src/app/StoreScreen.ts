@@ -19,12 +19,12 @@ export function buildStoreScreen(
   panel.className = 'overlay-panel store';
 
   const title = document.createElement('h1');
-  title.textContent = 'STORE';
+  title.textContent = 'ストア';
   panel.appendChild(title);
 
   const balance = document.createElement('p');
   const refreshBalance = (): void => {
-    balance.textContent = `Coins: ${currency.get()}`;
+    balance.textContent = `所持コイン: ${currency.get().toLocaleString()}`;
   };
   refreshBalance();
   panel.appendChild(balance);
@@ -40,28 +40,28 @@ export function buildStoreScreen(
       row.className = 'store-row';
 
       const name = document.createElement('span');
-      name.textContent = `${entry.name}${entry.price > 0 ? ` (${entry.price})` : ' (Free)'}`;
+      name.textContent = `${entry.name}${entry.price > 0 ? `  ${entry.price} コイン` : '  無料'}`;
       row.appendChild(name);
 
       const action = document.createElement('button');
       if (store.getEquipped() === entry.id) {
-        action.textContent = 'Equipped';
+        action.textContent = '装備中';
         action.disabled = true;
       } else if (store.isOwned(entry.id)) {
-        action.textContent = 'Equip';
+        action.textContent = '装備する';
         action.addEventListener('click', () => {
           if (store.equip(entry.id)) applyEquipped();
           renderRow();
         });
       } else {
-        action.textContent = 'Buy';
+        action.textContent = '購入';
         action.addEventListener('click', () => {
           const result = store.buy(entry.id);
           if (result === 'ok') {
             store.equip(entry.id);
             applyEquipped();
           } else if (result === 'insufficient') {
-            action.textContent = 'No coins';
+            action.textContent = 'コイン不足';
             setTimeout(renderRow, 700);
             return;
           }
@@ -82,7 +82,7 @@ export function buildStoreScreen(
   renderRow();
 
   const close = document.createElement('button');
-  close.textContent = 'Close';
+  close.textContent = '閉じる';
   close.addEventListener('click', onClose);
   panel.appendChild(close);
 
