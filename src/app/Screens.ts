@@ -39,6 +39,13 @@ export class Overlay {
     this.root.classList.remove('hidden');
   }
 
+  /** 任意の DOM を中央に表示する（ストア画面など）。 */
+  showNode(node: HTMLElement): void {
+    this.root.innerHTML = '';
+    this.root.appendChild(node);
+    this.root.classList.remove('hidden');
+  }
+
   hide(): void {
     this.root.classList.add('hidden');
   }

@@ -11,7 +11,13 @@ import { TetrisEngine } from './modes/tetris/TetrisEngine';
 import { HudRenderer } from './render/HudRenderer';
 import { singleBoardLayout } from './render/layout';
 import { SnapshotRenderer } from './render/SnapshotRenderer';
-import { getTheme } from './render/theme';
+import { getTheme, setTheme } from './render/theme';
+import { PluginRegistry } from './plugins/registry';
+import { skinPlugin } from './plugins/skins';
+import { Catalog } from './store/Catalog';
+import { Currency } from './store/Currency';
+import { StoreModel } from './store/StoreModel';
+import { buildStoreScreen } from './app/StoreScreen';
 
 const appEl = document.querySelector<HTMLDivElement>('#app');
 if (!appEl) throw new Error('#app not found');
@@ -22,8 +28,10 @@ const topbar = document.createElement('div');
 topbar.className = 'topbar';
 const soundBtn = document.createElement('button');
 const pauseBtn = document.createElement('button');
+const storeBtn = document.createElement('button');
 pauseBtn.textContent = 'Pause (P)';
-topbar.append(soundBtn, pauseBtn);
+storeBtn.textContent = 'Store';
+topbar.append(soundBtn, pauseBtn, storeBtn);
 appEl.appendChild(topbar);
 
 const canvas = document.createElement('canvas');
@@ -42,11 +50,23 @@ const engine = new TetrisEngine();
 const snapshotRenderer = new SnapshotRenderer(ctx);
 const hudRenderer = new HudRenderer(ctx);
 
+// プラグイン / 模擬ストア。
+const registry = new PluginRegistry();
+registry.register(skinPlugin);
+const catalog = new Catalog(registry);
+const currency = new Currency();
+const store = new StoreModel(catalog, currency);
+const equippedSkin = registry.findSkin(store.getEquipped());
+if (equippedSkin) setTheme(equippedSkin.theme);
+
 const input = new InputController(engine, loadKeymap());
 
 new GameController(engine, audio, highScores, {
   onGameOver: (score, isHigh) => showGameOver(score, isHigh),
 });
+
+// ライン消去でコインを獲得。
+engine.events.on('lineClear', ({ lines }) => currency.earn(lines * 10));
 
 // --- レイアウト / リサイズ -------------------------------------------
 let layout = singleBoardLayout(window.innerWidth, window.innerHeight);
@@ -94,6 +114,18 @@ pauseBtn.addEventListener('click', () => {
   engine.togglePause();
   reflectPause();
 });
+storeBtn.addEventListener('click', openStore);
+
+function openStore(): void {
+  // 開いている間はポーズ。
+  if (engine.getPhase() === 'playing') engine.togglePause();
+  overlay.showNode(
+    buildStoreScreen(registry, catalog, currency, store, () => {
+      overlay.hide();
+      reflectPause();
+    }),
+  );
+}
 
 function reflectPause(): void {
   if (engine.getPhase() === 'paused') {

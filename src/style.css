@@ -104,3 +104,34 @@ canvas {
 .overlay-panel button:hover {
   filter: brightness(1.1);
 }
+
+.store-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+  min-width: 260px;
+}
+
+.store-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+
+.store-row button {
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.store-row button:disabled {
+  background: #30363d;
+  color: #8b949e;
+  cursor: default;
+}
