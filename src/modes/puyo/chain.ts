@@ -1,4 +1,4 @@
-import { PuyoBoard } from './PuyoBoard';
+import type { PuyoBoard } from './PuyoBoard';
 import type { PuyoColor } from './types';
 
 /** 連結消去の最小数。 */
