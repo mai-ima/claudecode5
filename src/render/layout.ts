@@ -33,11 +33,39 @@ export function computeCellSize(availWidth: number, availHeight: number, count =
 
 /** 単一盤面のレイアウトを作る。 */
 export function singleBoardLayout(availWidth: number, availHeight: number): BoardLayout {
-  const cellSize = computeCellSize(availWidth, availHeight, 1);
+  return multiBoardLayout(availWidth, availHeight, 1).boards[0] as BoardLayout;
+}
+
+export interface MultiLayout {
+  cellSize: number;
+  totalWidth: number;
+  totalHeight: number;
+  boards: BoardLayout[];
+}
+
+/** 複数盤面（対戦）のレイアウトを作る。 */
+export function multiBoardLayout(
+  availWidth: number,
+  availHeight: number,
+  count: number,
+): MultiLayout {
+  const cellSize = computeCellSize(availWidth, availHeight, count);
+  const colsPerBoard = BOARD_WIDTH + LEFT_PANEL_CELLS + RIGHT_PANEL_CELLS;
   const boardPxH = VISIBLE_HEIGHT * cellSize;
-  const totalWidth = (BOARD_WIDTH + LEFT_PANEL_CELLS + RIGHT_PANEL_CELLS) * cellSize;
   const totalHeight = boardPxH + cellSize;
-  const boardX = LEFT_PANEL_CELLS * cellSize;
+  const totalWidth = (colsPerBoard * count + (count - 1)) * cellSize;
   const boardY = cellSize * 0.5;
-  return { cellSize, boardX, boardY, totalWidth, totalHeight };
+
+  const boards: BoardLayout[] = [];
+  for (let i = 0; i < count; i++) {
+    const originCols = i * (colsPerBoard + 1) + LEFT_PANEL_CELLS;
+    boards.push({
+      cellSize,
+      boardX: originCols * cellSize,
+      boardY,
+      totalWidth: colsPerBoard * cellSize,
+      totalHeight,
+    });
+  }
+  return { cellSize, totalWidth, totalHeight, boards };
 }

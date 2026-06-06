@@ -47,5 +47,4 @@ wss.on('connection', (ws: WebSocket) => {
   });
 });
 
-// eslint-disable-next-line no-console
 console.log(`Tetris versus relay server listening on ws://localhost:${PORT}`);
