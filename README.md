@@ -17,25 +17,52 @@
 - **Tetris 1P** … 1 人プレイ
 - **Puyo 1P** … ぷよぷよ（独立エンジン：組ぷよ・ちぎれ・4 連結消去・連鎖・おじゃま）
 - **Local 2P (Tetris)** … 同一画面で 2 人対戦（おじゃま送り・決着）
-- **Online (Tetris)** … Node + ws サーバ経由のオンライン対戦（疎結合同期）
+- **Online (Tetris)** … Vercel サーバーレス（/api + KV）経由のオンライン対戦（疎結合・HTTP ポーリング）
 
 ### 共通
 - ハイスコア永続化（localStorage）、効果音（WebAudio 合成・アセット不要）
 - レスポンシブ描画（画面サイズからセルサイズを動的算出、2 盤面も自動レイアウト）
 - プラグイン（描画/スキン）+ 模擬ストア（ゲーム内通貨でスキン購入・装備）
 
-## オンライン対戦の起動
+## オンライン対戦（Vercel サーバーレス）
 
-1 つの端末でリレーサーバを起動し、2 つのタブ（または 2 台）から同じルーム名で参加する。
+オンライン対戦のバックエンドは **Vercel のサーバーレス関数（`/api`）+ KV** で動く。
+常駐 WebSocket は使わず、`join` → 定期 `poll` → `send` の HTTP ポーリングで、
+「おじゃまの量」と「相手の描画用 Snapshot」だけを交換する（厳密なフレーム同期はしない）。
+サーバ（関数）は中身を解釈せず、相手のメールボックスへ中継するだけ。
+
+### API エンドポイント（`api/`）
+
+| エンドポイント | 役割 |
+| --- | --- |
+| `POST /api/join` | ルーム参加（プレイヤー番号 0/1 を払い出し、満室は 409） |
+| `POST /api/send` | 相手のメールボックスへメッセージを中継 |
+| `GET /api/poll` | 開始判定 + 自分宛メッセージの取得 |
+
+### ローカル実行（`vercel dev`）
+
+`/api` 関数を動かすには Vercel CLI が必要（`npm run dev` 単体では静的フロントのみ）。
 
 ```bash
-npm run server     # ws://localhost:8080 でリレーサーバ起動
-npm run dev        # 別ターミナルで開発サーバ
+npm i -g vercel        # 未導入なら
+vercel dev             # フロント + /api を同一オリジンで起動
 # ブラウザ 2 つで Online (Tetris) を選び、同じルーム名を入力
 ```
 
-設計上、各プレイヤーはローカルで独立して進行し、通信するのは「おじゃまの量」と
-「相手の描画用 Snapshot」だけ（厳密なフレーム同期はしない）。サーバは中身を解釈せず中継する。
+KV 環境変数（`KV_REST_API_URL` / `KV_REST_API_TOKEN`）が無い場合は、ローカル単一プロセス用の
+メモリ実装に自動フォールバックする（同一プロセス内でのみ有効）。
+
+### デプロイ
+
+```bash
+vercel               # プレビュー
+vercel --prod        # 本番
+```
+
+- フロントは `vite build`（`dist/`）として静的配信、`/api/*` はサーバーレス関数として配置される（`vercel.json`）。
+- **本番では Vercel KV（Upstash for Redis）の接続が必須**（複数インスタンス間でルーム状態を共有するため）。
+  Vercel ダッシュボードで KV を作成し、プロジェクトに環境変数を紐づける。
+- API ベースは既定で同一オリジンの `/api`。別オリジンにする場合は `VITE_API_BASE` を設定。
 
 ## セットアップ
 
@@ -54,9 +81,10 @@ npm run dev        # 開発サーバ (http://localhost:5173)
 | `npm run test` | ユニットテスト（Vitest） |
 | `npm run coverage` | カバレッジ計測 |
 | `npm run typecheck` | 型チェック（アプリ） |
-| `npm run typecheck:server` | 型チェック（サーバ・Node 用） |
+| `npm run typecheck:api` | 型チェック（Vercel サーバーレス関数） |
 | `npm run lint` | ESLint |
 | `npm run format` | Prettier 整形 |
+| `npm run verify` | lint + 型 + テスト + ビルドを一括実行（品質ゲート） |
 
 ## 操作方法（デフォルト）
 
@@ -87,7 +115,7 @@ npm run dev        # 開発サーバ (http://localhost:5173)
 
 ```
 config ─► modes/tetris (TetrisEngine, DOM非依存) ◄─ input / render / audio ─► app ─► main.ts
-                                                                              └─► versus / net ─► server
+                                                                              └─► versus / net ─► api/ (Vercel serverless + KV)
 shared/  … モード間で共有する契約のみ（Snapshot / EngineView / RNG / Emitter）
 ```
 
@@ -114,9 +142,9 @@ src/
   plugins/  プラグイン基盤（描画/スキン限定）
   store/    模擬ストア（通貨/カタログ/所持・装備）
   versus/   VersusController / DummyEngine / 攻撃計算 / コンバタント
-  net/      NetClient / protocol（結果 + Snapshot 交換のみ）
+  net/      NetClient / protocol（結果 + Snapshot 交換のみ, HTTP ポーリング）
   app/      GameApp / GameLoop / sessions / Settings / HighScoreStore / Screens
-server/     オンライン対戦リレーサーバ（Node + ws, 独立 tsconfig）
+api/        Vercel サーバーレス関数（join / send / poll）+ KV ストア（独立 tsconfig）
 ```
 
 ### 拡張性のための要点（設計レビュー反映）
@@ -141,7 +169,7 @@ npm run test
 ## 品質ゲート（ローカル検証 / CI は廃止）
 
 GitHub Actions による CI は廃止し、品質チェックは**ローカル検証**に移行した。
-1 コマンドで lint・型チェック（app + server）・テスト・ビルドをまとめて実行する。
+1 コマンドで lint・型チェック（app + api）・テスト・ビルドをまとめて実行する。
 
 ```bash
 npm run verify

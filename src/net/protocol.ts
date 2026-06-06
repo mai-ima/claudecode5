@@ -5,7 +5,9 @@ import type { Snapshot } from '../shared/snapshot';
  *
  * 設計（疎結合）: 厳密な状態同期はしない。各自ローカルで独立して進行し、
  * 通信するのは「結果（おじゃま量）」と「相手の描画用 Snapshot」だけ。
- * サーバは中身を解釈せず中継するだけ（server/protocol.ts と論理的に対応）。
+ *
+ * 転送は Vercel サーバーレス（/api）への HTTP（join / send / poll）。
+ * サーバは中身を解釈せず、相手のメールボックスへ中継するだけ。
  */
 
 /** プレイヤー間でやり取りする内容（サーバが中継する）。 */
@@ -14,14 +16,21 @@ export type RelayMessage =
   | { t: 'attack'; amount: number }
   | { t: 'gameover' };
 
-/** クライアント -> サーバ。 */
-export type ClientToServer = { t: 'join'; room: string } | RelayMessage;
+/** /api/join のレスポンス。 */
+export interface JoinResponse {
+  player: 0 | 1;
+  room: string;
+}
 
-/** サーバ -> クライアント。 */
-export type ServerToClient =
-  | { t: 'joined'; room: string; player: 0 | 1 }
-  | { t: 'start' }
-  | { t: 'opponentLeft' }
-  | RelayMessage;
+/** /api/poll のレスポンス。 */
+export interface PollResponse {
+  started: boolean;
+  messages: RelayMessage[];
+}
 
-export const DEFAULT_WS_URL = 'ws://localhost:8080';
+/** API のベースパス（同一オリジンの Vercel サーバーレス）。 */
+export const DEFAULT_API_BASE =
+  (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
+
+/** ポーリング間隔（ms）。 */
+export const POLL_INTERVAL_MS = 150;

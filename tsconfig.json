@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vitest/globals"],
+    "types": ["vitest/globals", "vite/client"],
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -22,5 +22,5 @@
     "resolveJsonModule": true
   },
   "include": ["src"],
-  "exclude": ["server", "dist", "node_modules"]
+  "exclude": ["api", "dist", "node_modules"]
 }

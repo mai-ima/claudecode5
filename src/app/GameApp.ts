@@ -4,7 +4,6 @@ import { DEFAULT_PUYO_KEYMAP_P1, PuyoInputController } from '../input/PuyoInputC
 import { InputController } from '../input/InputController';
 import { PuyoEngine } from '../modes/puyo/PuyoEngine';
 import { TetrisEngine } from '../modes/tetris/TetrisEngine';
-import { DEFAULT_WS_URL } from '../net/protocol';
 import { NetClient } from '../net/NetClient';
 import { HudRenderer } from '../render/HudRenderer';
 import { multiBoardLayout } from '../render/layout';
@@ -166,10 +165,10 @@ export class GameApp {
       onStart: () => {
         this.startSession(new OnlineVersusSession(local, input, dummy, net));
       },
-      onError: () =>
+      onError: (message) =>
         this.overlay.show(
           '接続エラー',
-          ['サーバを起動してください: npm run server', DEFAULT_WS_URL],
+          ['オンラインAPIに接続できません', '`vercel dev` で起動するか Vercel にデプロイしてください', message],
           [{ label: 'Menu', onClick: () => this.showMenu() }],
         ),
     });
@@ -181,7 +180,7 @@ export class GameApp {
         this.showMenu();
       } },
     ]);
-    net.connect(room);
+    void net.connect(room);
   }
 
   // ---- 描画 ----------------------------------------------------------

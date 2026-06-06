@@ -1,6 +1,6 @@
 import type { Snapshot } from '../shared/snapshot';
-import type { ClientToServer, ServerToClient } from './protocol';
-import { DEFAULT_WS_URL } from './protocol';
+import type { JoinResponse, PollResponse, RelayMessage } from './protocol';
+import { DEFAULT_API_BASE, POLL_INTERVAL_MS } from './protocol';
 
 export interface NetCallbacks {
   onJoined?: (player: 0 | 1, room: string) => void;
@@ -14,58 +14,108 @@ export interface NetCallbacks {
 }
 
 /**
- * WebSocket クライアント。結果（おじゃま）と相手 Snapshot の交換のみを担う。
+ * オンライン対戦クライアント（Vercel サーバーレス / HTTP ポーリング）。
+ *
+ * 常駐 WebSocket は使わず、join → 定期 poll → send で結果と相手 Snapshot を交換する。
+ * Vercel のサーバーレス + KV と組み合わせて動作する。
  */
 export class NetClient {
-  private ws: WebSocket | null = null;
+  private room = '';
+  private player: 0 | 1 | null = null;
+  private started = false;
+  private polling = false;
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly callbacks: NetCallbacks = {}) {}
+  constructor(
+    private readonly callbacks: NetCallbacks = {},
+    private readonly base: string = DEFAULT_API_BASE,
+  ) {}
 
-  connect(room: string, url: string = DEFAULT_WS_URL): void {
-    this.ws = new WebSocket(url);
-    this.ws.addEventListener('open', () => this.send({ t: 'join', room }));
-    this.ws.addEventListener('message', (ev) => this.handle(ev.data as string));
-    this.ws.addEventListener('close', () => this.callbacks.onClose?.());
-    this.ws.addEventListener('error', () => this.callbacks.onError?.('connection error'));
+  async connect(room: string): Promise<void> {
+    this.room = room;
+    try {
+      const res = await fetch(`${this.base}/join`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ room }),
+      });
+      if (res.status === 409) {
+        this.callbacks.onError?.('room full');
+        return;
+      }
+      if (!res.ok) {
+        this.callbacks.onError?.(`join failed (${res.status})`);
+        return;
+      }
+      const data = (await res.json()) as JoinResponse;
+      this.player = data.player;
+      this.callbacks.onJoined?.(data.player, room);
+      this.polling = true;
+      this.schedulePoll();
+    } catch {
+      this.callbacks.onError?.('connection error');
+    }
   }
 
   disconnect(): void {
-    this.ws?.close();
-    this.ws = null;
+    this.polling = false;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.callbacks.onClose?.();
   }
 
   sendSnapshot(snapshot: Snapshot): void {
-    this.send({ t: 'snapshot', snapshot });
+    void this.send({ t: 'snapshot', snapshot });
   }
 
   sendAttack(amount: number): void {
-    if (amount > 0) this.send({ t: 'attack', amount });
+    if (amount > 0) void this.send({ t: 'attack', amount });
   }
 
   sendGameOver(): void {
-    this.send({ t: 'gameover' });
+    void this.send({ t: 'gameover' });
   }
 
-  private send(msg: ClientToServer): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(msg));
-    }
-  }
-
-  private handle(data: string): void {
-    let msg: ServerToClient;
+  private async send(msg: RelayMessage): Promise<void> {
+    if (this.player === null) return;
     try {
-      msg = JSON.parse(data) as ServerToClient;
+      await fetch(`${this.base}/send`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ room: this.room, from: this.player, msg }),
+      });
     } catch {
-      return;
+      // 一過性の送信失敗は無視（次のフレームで再送される）。
     }
+  }
+
+  private schedulePoll(): void {
+    if (!this.polling) return;
+    this.timer = setTimeout(() => void this.poll(), POLL_INTERVAL_MS);
+  }
+
+  private async poll(): Promise<void> {
+    if (!this.polling || this.player === null) return;
+    try {
+      const url = `${this.base}/poll?room=${encodeURIComponent(this.room)}&player=${this.player}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = (await res.json()) as PollResponse;
+        if (data.started && !this.started) {
+          this.started = true;
+          this.callbacks.onStart?.();
+        }
+        for (const msg of data.messages) this.dispatch(msg);
+      }
+    } catch {
+      // ネットワーク揺らぎは無視して次回ポーリング。
+    } finally {
+      this.schedulePoll();
+    }
+  }
+
+  private dispatch(msg: RelayMessage): void {
     switch (msg.t) {
-      case 'joined':
-        this.callbacks.onJoined?.(msg.player, msg.room);
-        break;
-      case 'start':
-        this.callbacks.onStart?.();
-        break;
       case 'snapshot':
         this.callbacks.onSnapshot?.(msg.snapshot);
         break;
@@ -74,9 +124,6 @@ export class NetClient {
         break;
       case 'gameover':
         this.callbacks.onOpponentGameOver?.();
-        break;
-      case 'opponentLeft':
-        this.callbacks.onOpponentLeft?.();
         break;
     }
   }
