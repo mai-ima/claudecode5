@@ -15,7 +15,9 @@
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "server": "tsx server/index.ts"
+    "server": "tsx server/index.ts",
+    "verify": "npm run lint && npm run typecheck && npm run typecheck:server && npm run test && npm run build",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "keywords": ["tetris", "puyo", "game", "canvas", "typescript"],
   "license": "MIT",

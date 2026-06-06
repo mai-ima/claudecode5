@@ -1,0 +1,16 @@
+#!/bin/sh
+# CI の代替: push 前にローカルで全検証（lint / 型 / テスト / ビルド）を実行する。
+# 有効化: npm run hooks:install  （git config core.hooksPath .githooks）
+#
+# GitHub Actions CI は廃止したため、品質ゲートはこのフックと `npm run verify` が担う。
+
+echo "[pre-push] running local verification (npm run verify)..."
+npm run verify
+status=$?
+if [ "$status" -ne 0 ]; then
+  echo "[pre-push] verification failed. push aborted." >&2
+  echo "[pre-push] 修正後に再度 push してください（または --no-verify で一時的に回避）。" >&2
+  exit 1
+fi
+echo "[pre-push] verification passed."
+exit 0

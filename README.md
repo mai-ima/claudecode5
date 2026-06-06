@@ -132,11 +132,31 @@ server/     オンライン対戦リレーサーバ（Node + ws, 独立 tsconfig
 ## テスト
 
 エンジンのコアロジックは DOM 非依存で、Vitest（node 環境）で網羅的にテストしている
-（盤面・SRS・T-Spin・スコア・7-bag・エンジン統合など）。
+（盤面・SRS・T-Spin・スコア・7-bag・連鎖・対戦・ストア・エンジン統合など）。
 
 ```bash
 npm run test
 ```
+
+## 品質ゲート（ローカル検証 / CI は廃止）
+
+GitHub Actions による CI は廃止し、品質チェックは**ローカル検証**に移行した。
+1 コマンドで lint・型チェック（app + server）・テスト・ビルドをまとめて実行する。
+
+```bash
+npm run verify
+```
+
+push 前に自動で `npm run verify` を走らせる git フックも用意している（任意・推奨）。
+
+```bash
+npm run hooks:install   # git config core.hooksPath .githooks を設定
+# 以降、git push のたびに pre-push フックが検証を実行
+# 一時的に回避したい場合: git push --no-verify
+```
+
+> なぜ廃止したか: 外部 CI への依存をやめ、検証を手元（push 前フック）で完結させる方針へ移行した。
+> 同じチェック内容を `.githooks/pre-push` と `npm run verify` が担うため、品質ゲートは維持される。
 
 ## ライセンス
 
