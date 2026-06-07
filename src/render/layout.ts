@@ -58,6 +58,49 @@ export interface MultiLayout {
   boards: BoardLayout[];
 }
 
+export interface BoardDims {
+  cols: number;
+  rows: number;
+}
+
+/**
+ * 盤面ごとに寸法が異なる場合（テトリス10×20 と ぷよ6×12 のクロス対戦など）の
+ * レイアウト。全盤で共通のセルサイズを使い、横に並べる。
+ */
+export function multiBoardLayoutFor(
+  availWidth: number,
+  availHeight: number,
+  dims: BoardDims[],
+): MultiLayout {
+  const list = dims.length > 0 ? dims : [{ cols: BOARD_WIDTH, rows: VISIBLE_HEIGHT }];
+  const maxRows = Math.max(...list.map((d) => d.rows));
+  const totalCols =
+    list.reduce((a, d) => a + d.cols + LEFT_PANEL_CELLS + RIGHT_PANEL_CELLS, 0) + (list.length - 1);
+  const cellSize = Math.max(
+    8,
+    Math.min(BASE_CELL_SIZE, Math.floor(Math.min(availWidth / totalCols, availHeight / (maxRows + 1)))),
+  );
+  const totalHeight = maxRows * cellSize + cellSize;
+  const boardY = cellSize * 0.5;
+
+  const boards: BoardLayout[] = [];
+  let colCursor = 0;
+  for (const d of list) {
+    const originCols = colCursor + LEFT_PANEL_CELLS;
+    boards.push({
+      cellSize,
+      boardX: originCols * cellSize,
+      boardY,
+      cols: d.cols,
+      rows: d.rows,
+      totalWidth: (d.cols + LEFT_PANEL_CELLS + RIGHT_PANEL_CELLS) * cellSize,
+      totalHeight,
+    });
+    colCursor += d.cols + LEFT_PANEL_CELLS + RIGHT_PANEL_CELLS + 1;
+  }
+  return { cellSize, totalWidth: totalCols * cellSize, totalHeight, boards };
+}
+
 /** 複数盤面（対戦）のレイアウトを作る。 */
 export function multiBoardLayout(
   availWidth: number,

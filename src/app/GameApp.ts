@@ -5,7 +5,11 @@ import { AudioManager } from '../audio/AudioManager';
 import { TetrisAiController } from '../ai/AiController';
 import { PuyoAiController } from '../ai/PuyoAiController';
 import { DEFAULT_KEYMAP_P1, DEFAULT_KEYMAP_P2, loadKeymap } from '../config/controls';
-import { DEFAULT_PUYO_KEYMAP_P1, PuyoInputController } from '../input/PuyoInputController';
+import {
+  DEFAULT_PUYO_KEYMAP_P1,
+  DEFAULT_PUYO_KEYMAP_P2,
+  PuyoInputController,
+} from '../input/PuyoInputController';
 import { InputController } from '../input/InputController';
 import { PuyoEngine } from '../modes/puyo/PuyoEngine';
 import { TetrisEngine } from '../modes/tetris/TetrisEngine';
@@ -16,8 +20,8 @@ import { drawBackground } from '../render/Background';
 import { drawText } from '../render/draw';
 import { HudRenderer } from '../render/HudRenderer';
 import { localizeClearLabel } from '../render/labels';
-import { multiBoardLayout } from '../render/layout';
-import type { MultiLayout } from '../render/layout';
+import { multiBoardLayoutFor } from '../render/layout';
+import type { BoardDims, MultiLayout } from '../render/layout';
 import { SnapshotRenderer } from '../render/SnapshotRenderer';
 import type { RenderOptions } from '../render/SnapshotRenderer';
 import { getTheme, setSkin } from '../render/theme';
@@ -28,7 +32,7 @@ import { skinPlugin } from '../plugins/skins';
 import { Catalog } from '../store/Catalog';
 import { Currency } from '../store/Currency';
 import { StoreModel } from '../store/StoreModel';
-import { tetrisCombatant } from '../versus/combatants';
+import { puyoCombatant, tetrisCombatant } from '../versus/combatants';
 import { DummyEngine } from '../versus/DummyEngine';
 import { GameLoop } from './GameLoop';
 import { HighScoreStore } from './HighScoreStore';
@@ -134,7 +138,7 @@ export class GameApp {
     this.audio.setMuted(!this.settings.soundEnabled);
     this.updateSoundBtn();
 
-    this.layout = this.computeLayout(1);
+    this.layout = this.computeLayout();
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('keydown', (e) => this.onGlobalKey(e));
 
@@ -164,8 +168,10 @@ export class GameApp {
         { label: 'スプリント40', onClick: () => this.startTetris1P({ type: 'sprint', lines: 40 }) },
         { label: 'ウルトラ2分', onClick: () => this.startTetris1P({ type: 'ultra', timeMs: 120000 }) },
         { label: 'ローカル対戦（2人）', onClick: () => this.startLocalVersus() },
+        { label: 'ぷよテト対戦（テト vs ぷよ）', onClick: () => this.startCrossVersus() },
         { label: 'AIと対戦（テトリス）', onClick: () => this.startAiVersus() },
         { label: 'オンライン対戦', onClick: () => this.startOnline() },
+        { label: 'プロフィール / 戦績', onClick: () => this.openProfile() },
         { label: '設定', onClick: () => this.openOptions() },
       ],
       { variant: 'menu', subtitle: '本格パズル ― テトリス & ぷよぷよ / 対戦・AI対応' },
@@ -179,9 +185,9 @@ export class GameApp {
     this.pauseShown = false;
     this.banner = null;
     this.countdown = withCountdown ? COUNTDOWN_MS : 0;
-    this.layout = this.computeLayout(session.boardCount);
-    this.resize();
     session.start();
+    this.layout = this.computeLayout();
+    this.resize();
     this.updateAiBtn();
     this.overlay.hide();
   }
@@ -273,6 +279,20 @@ export class GameApp {
       }),
     );
     this.setFooter(FOOTER_AI);
+  }
+
+  private startCrossVersus(): void {
+    this.restart = () => this.startCrossVersus();
+    const a = new TetrisEngine({ rules: this.activeRules() });
+    this.wireTetris(a);
+    const inputA = new InputController(a, DEFAULT_KEYMAP_P1, this.handling());
+    const b = new PuyoEngine();
+    this.wirePuyo(b);
+    const inputB = new PuyoInputController(b, DEFAULT_PUYO_KEYMAP_P2);
+    this.startSession(
+      new LocalVersusSession(a, inputA, b, inputB, tetrisCombatant(a), puyoCombatant(b)),
+    );
+    this.setFooter('1P(テトリス): ←→ ↓ ↑/Z A Space C　／　2P(ぷよ): J L K I/U O G　／　R リスタート');
   }
 
   private startOnline(): void {
@@ -601,19 +621,25 @@ export class GameApp {
     this.session = null;
   }
 
-  private boardDims(): { cols: number; rows: number } {
-    const snap = this.session?.views()[0]?.getSnapshot();
-    return snap ? { cols: snap.cols, rows: snap.rows } : { cols: 10, rows: 20 };
+  private boardDimsList(): BoardDims[] {
+    const views = this.session?.views();
+    if (!views || views.length === 0) return [{ cols: 10, rows: 20 }];
+    return views.map((v) => {
+      const s = v.getSnapshot();
+      return { cols: s.cols, rows: s.rows };
+    });
   }
 
-  private computeLayout(count: number): MultiLayout {
-    const { cols, rows } = this.boardDims();
-    return multiBoardLayout(window.innerWidth * 0.96, window.innerHeight * 0.86, count, cols, rows);
+  private computeLayout(): MultiLayout {
+    return multiBoardLayoutFor(
+      window.innerWidth * 0.96,
+      window.innerHeight * 0.86,
+      this.boardDimsList(),
+    );
   }
 
   private resize(): void {
-    const count = this.session?.boardCount ?? 1;
-    this.layout = this.computeLayout(count);
+    this.layout = this.computeLayout();
     const dpr = window.devicePixelRatio || 1;
     this.canvas.style.width = `${this.layout.totalWidth}px`;
     this.canvas.style.height = `${this.layout.totalHeight}px`;
