@@ -2,6 +2,7 @@ import { Profile } from '../account/Profile';
 import { StatsStore } from '../account/StatsStore';
 import { AddonRegistry } from '../addons/registry';
 import { AudioManager } from '../audio/AudioManager';
+import { SOUND_THEMES } from '../audio/themes';
 import { TetrisAiController } from '../ai/AiController';
 import { PuyoAiController } from '../ai/PuyoAiController';
 import { DEFAULT_KEYMAP_P1, DEFAULT_KEYMAP_P2, loadKeymap } from '../config/controls';
@@ -17,6 +18,7 @@ import { NetClient } from '../net/NetClient';
 import { seedFromRoom } from '../net/transport';
 import { mulberry32 } from '../shared/rng';
 import { drawBackground } from '../render/Background';
+import { Effects } from '../render/Effects';
 import { drawText } from '../render/draw';
 import { HudRenderer } from '../render/HudRenderer';
 import { localizeClearLabel } from '../render/labels';
@@ -76,6 +78,7 @@ export class GameApp {
   private overlay: Overlay;
   private snapshotRenderer: SnapshotRenderer;
   private hudRenderer: HudRenderer;
+  private effects = new Effects();
   private footer: HTMLDivElement;
 
   private audio = new AudioManager();
@@ -209,6 +212,7 @@ export class GameApp {
   /** プリセットの見た目を適用（ストアで装備中のミノがあれば優先）。 */
   private applyLook(): void {
     this.addons.apply();
+    this.audio.setTheme(SOUND_THEMES[this.addons.getActive().id] ?? {});
     const eq = this.store.getEquipped();
     if (eq && eq !== 'guideline') {
       const s = this.registry.findSkin(eq);
@@ -343,11 +347,36 @@ export class GameApp {
 
   private step(dt: number): void {
     if (!this.session) return;
+    this.effects.update(dt);
     if (this.countdown > 0) {
       this.countdown -= dt;
       return;
     }
     this.session.tick(dt);
+  }
+
+  private boardCenter(i = 0): { x: number; y: number } {
+    const b = this.layout.boards[i];
+    if (!b) return { x: this.layout.totalWidth / 2, y: this.layout.totalHeight / 2 };
+    return { x: b.boardX + (b.cols * b.cellSize) / 2, y: b.boardY + b.rows * b.cellSize * 0.45 };
+  }
+
+  private drawDanger(snap: Snapshot, board: { boardX: number; boardY: number; cols: number; rows: number; cellSize: number }): void {
+    let top = snap.rows;
+    for (let y = 0; y < snap.grid.length; y++) {
+      const row = snap.grid[y];
+      if (row && row.some((c) => c.type !== 'empty' && c.type !== 'ghost')) {
+        top = y;
+        break;
+      }
+    }
+    if (top > 3) return;
+    const a = 0.1 + 0.1 * Math.sin(performance.now() / 110);
+    this.ctx.save();
+    this.ctx.globalAlpha = Math.max(0, a);
+    this.ctx.fillStyle = '#ff2b2b';
+    this.ctx.fillRect(board.boardX, board.boardY, board.cols * board.cellSize, board.rows * board.cellSize);
+    this.ctx.restore();
   }
 
   private renderOptions(): RenderOptions {
@@ -363,6 +392,10 @@ export class GameApp {
     const opts = this.renderOptions();
     const nextCount = this.settings.all.nextCount;
     const views = this.session.views();
+
+    const shake = this.effects.shakeOffset();
+    this.ctx.save();
+    this.ctx.translate(shake.x, shake.y);
     for (let i = 0; i < views.length; i++) {
       const board = this.layout.boards[i];
       const view = views[i];
@@ -371,8 +404,11 @@ export class GameApp {
       const snap: Snapshot = { ...raw, next: raw.next.slice(0, nextCount) };
       this.snapshotRenderer.drawBoard(snap, board, blinkOn, opts);
       this.hudRenderer.draw(snap, board);
+      this.drawDanger(snap, board);
     }
+    this.ctx.restore();
 
+    this.effects.draw(this.ctx);
     this.drawInfo();
     this.drawBanner();
 
@@ -583,12 +619,24 @@ export class GameApp {
     e.on('rotate', () => this.audio.play('rotate'));
     e.on('lock', () => this.audio.play('lock'));
     e.on('hold', () => this.audio.play('hold'));
-    e.on('hardDrop', () => this.audio.play('hardDrop'));
+    e.on('hardDrop', () => {
+      this.audio.play('hardDrop');
+      this.effects.shake(3, 110);
+    });
     e.on('lineClear', ({ lines, tspin, label }) => {
       this.audio.play(lines >= 4 ? 'tetris' : 'lineClear');
+      const c = this.boardCenter();
+      this.effects.shake(lines >= 4 ? 14 : 7, lines >= 4 ? 420 : 240);
+      this.effects.burst(c.x, c.y, getTheme().accent, lines >= 4 ? 42 : 22);
       if (label && (lines >= 4 || tspin !== 'none')) {
         this.setBanner(`${localizeClearLabel(label)}！`, getTheme().accent);
       }
+    });
+    e.on('perfectClear', () => {
+      const c = this.boardCenter();
+      this.effects.shake(20, 600);
+      this.effects.burst(c.x, c.y, getTheme().accent2, 60, 1.6);
+      this.setBanner('パーフェクトクリア！', getTheme().accent2, 1500);
     });
     e.on('levelUp', ({ level }) => {
       this.audio.play('levelUp');
@@ -607,6 +655,9 @@ export class GameApp {
     e.on('lock', () => this.audio.play('lock'));
     e.on('chain', ({ count }) => {
       this.audio.play(count >= 4 ? 'tetris' : 'lineClear');
+      const c = this.boardCenter();
+      this.effects.shake(6 + count * 2, 280);
+      this.effects.burst(c.x, c.y, getTheme().accent, 16 + count * 6);
       if (count >= 2) this.setBanner(`${count} れんさ！`, getTheme().accent);
     });
     e.on('gameOver', () => {

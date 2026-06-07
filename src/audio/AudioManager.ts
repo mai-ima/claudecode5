@@ -1,5 +1,6 @@
 import { SFX } from './sounds';
 import type { SfxId } from './sounds';
+import type { SoundTheme } from './themes';
 
 /**
  * WebAudio で効果音を合成して鳴らす（外部アセット不要）。
@@ -8,6 +9,12 @@ import type { SfxId } from './sounds';
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private muted = false;
+  private theme: SoundTheme = {};
+
+  /** プリセット別サウンドテーマを設定する。 */
+  setTheme(theme: SoundTheme): void {
+    this.theme = theme;
+  }
 
   constructor() {
     try {
@@ -34,7 +41,7 @@ export class AudioManager {
 
   play(id: SfxId): void {
     if (this.muted || !this.ctx) return;
-    const spec = SFX[id];
+    const spec = { ...SFX[id], ...(this.theme[id] ?? {}) };
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
