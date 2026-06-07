@@ -3,6 +3,11 @@ import { VersusController } from '../versus/VersusController';
 import type { Combatant } from '../versus/VersusController';
 import type { DummyEngine } from '../versus/DummyEngine';
 import type { NetClient } from '../net/NetClient';
+import { mulberry32 } from '../shared/rng';
+import { TetrisEngine } from '../modes/tetris/TetrisEngine';
+import type { TetrisRuleSet } from '../modes/tetris/ruleset';
+import { applyAction } from '../replay/Player';
+import type { Replay } from '../replay/Recorder';
 import type { InputLike, Outcome, PlayableEngine, Session } from './Session';
 
 export type GoalType = 'marathon' | 'sprint' | 'ultra';
@@ -252,5 +257,72 @@ export class OnlineVersusSession implements Session {
   dispose(): void {
     this.input.detach();
     this.net.disconnect();
+  }
+}
+
+/** リプレイ視聴セッション（記録済み操作を決定的に再生して描画する）。 */
+export class ReplaySession implements Session {
+  readonly boardCount = 1;
+  private engine: TetrisEngine;
+  private t = 0;
+  private idx = 0;
+  private finished = false;
+  private readonly endT: number;
+
+  constructor(
+    private readonly replay: Replay,
+    rules?: Partial<TetrisRuleSet>,
+  ) {
+    this.engine = new TetrisEngine(
+      rules ? { rng: mulberry32(replay.seed), rules } : { rng: mulberry32(replay.seed) },
+    );
+    this.endT = (replay.events.at(-1)?.t ?? 0) + 2000;
+  }
+
+  start(): void {
+    this.engine.start();
+    this.t = 0;
+    this.idx = 0;
+    this.finished = false;
+  }
+
+  tick(dt: number): void {
+    if (this.finished) return;
+    this.t += dt;
+    while (
+      this.idx < this.replay.events.length &&
+      (this.replay.events[this.idx] as { t: number }).t <= this.t
+    ) {
+      applyAction(this.engine, (this.replay.events[this.idx] as { action: Parameters<typeof applyAction>[1] }).action);
+      this.idx++;
+    }
+    this.engine.tick(dt);
+    if (this.engine.isGameOver() || (this.idx >= this.replay.events.length && this.t >= this.endT)) {
+      this.finished = true;
+    }
+  }
+
+  views(): EngineView[] {
+    return [this.engine];
+  }
+
+  isOver(): boolean {
+    return this.finished;
+  }
+
+  resultLines(): string[] {
+    return ['リプレイ終了', `スコア ${this.engine.getScore().toLocaleString()}`];
+  }
+
+  info(): string[] {
+    return ['REPLAY'];
+  }
+
+  togglePause(): void {
+    this.engine.togglePause();
+  }
+
+  dispose(): void {
+    // no-op
   }
 }

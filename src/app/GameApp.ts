@@ -17,6 +17,11 @@ import { TetrisEngine } from '../modes/tetris/TetrisEngine';
 import { NetClient } from '../net/NetClient';
 import { seedFromRoom, WebSocketTransport } from '../net/transport';
 import { mulberry32 } from '../shared/rng';
+import { ReplayRecorder } from '../replay/Recorder';
+import type { Replay } from '../replay/Recorder';
+import { ReplayStore } from '../replay/ReplayStore';
+import { wrapForRecording } from '../replay/recordingHandler';
+import { buildReplayScreen } from './ReplayScreen';
 import { drawBackground } from '../render/Background';
 import { Effects } from '../render/Effects';
 import { drawText } from '../render/draw';
@@ -47,7 +52,12 @@ import { Overlay } from './Screens';
 import type { OverlayButton } from './Screens';
 import { Settings } from './Settings';
 import { buildStoreScreen } from './StoreScreen';
-import { LocalVersusSession, OnlineVersusSession, SinglePlayerSession } from './sessions';
+import {
+  LocalVersusSession,
+  OnlineVersusSession,
+  ReplaySession,
+  SinglePlayerSession,
+} from './sessions';
 import type { Goal } from './sessions';
 import type { Session } from './Session';
 
@@ -100,6 +110,9 @@ export class GameApp {
   private countdown = 0;
   private banner: Banner | null = null;
   private restart: (() => void) | null = null;
+  private replayStore = new ReplayStore();
+  private recorder: ReplayRecorder | null = null;
+  private recordMode = '';
   private loop: GameLoop;
   private soundBtn: HTMLButtonElement;
   private aiBtn: HTMLButtonElement;
@@ -160,6 +173,7 @@ export class GameApp {
   private showMenu(): void {
     this.disposeSession();
     this.autopilot = null;
+    this.recorder = null;
     this.pauseShown = false;
     this.updateAiBtn();
     this.setFooter('');
@@ -176,6 +190,7 @@ export class GameApp {
         { label: 'AIと対戦（テトリス）', onClick: () => this.startAiVersus() },
         { label: 'オンライン対戦', onClick: () => this.startOnline() },
         { label: 'プロフィール / 戦績', onClick: () => this.openProfile() },
+        { label: 'リプレイ', onClick: () => this.openReplays() },
         { label: '設定', onClick: () => this.openOptions() },
       ],
       {
@@ -239,18 +254,23 @@ export class GameApp {
 
   private startTetris1P(goal: Goal = { type: 'marathon' }): void {
     this.restart = () => this.startTetris1P(goal);
-    const engine = new TetrisEngine({ rules: this.activeRules() });
+    const seed = (Math.random() * 0x100000000) >>> 0;
+    const engine = new TetrisEngine({ rng: mulberry32(seed), rules: this.activeRules() });
     this.wireTetris(engine);
     engine.events.on('lineClear', ({ lines }) => this.currency.earn(lines * 10));
-    const human = new InputController(engine, loadKeymap(), this.handling());
+    const recorder = new ReplayRecorder(seed, this.addons.getActive().id);
+    const human = new InputController(wrapForRecording(engine, recorder), loadKeymap(), this.handling());
     const ai = new TetrisAiController(engine, this.settings.all.aiLevel);
     this.autopilot = new InputSwitch(human, ai);
     this.startSession(new SinglePlayerSession(engine, this.autopilot, goal));
+    this.recorder = recorder;
+    this.recordMode = goal.type;
     this.setFooter(FOOTER_TETRIS);
   }
 
   private startPuyo1P(): void {
     this.restart = () => this.startPuyo1P();
+    this.recorder = null;
     const engine = new PuyoEngine();
     this.wirePuyo(engine);
     engine.events.on('chain', ({ count }) => this.currency.earn(count * 15));
@@ -263,6 +283,7 @@ export class GameApp {
 
   private startLocalVersus(): void {
     this.restart = () => this.startLocalVersus();
+    this.recorder = null;
     const a = new TetrisEngine({ rules: this.activeRules() });
     const b = new TetrisEngine({ rules: this.activeRules() });
     this.wireTetris(a);
@@ -276,6 +297,7 @@ export class GameApp {
 
   private startAiVersus(): void {
     this.restart = () => this.startAiVersus();
+    this.recorder = null;
     const a = new TetrisEngine({ rules: this.activeRules() });
     const b = new TetrisEngine({ rules: this.activeRules() });
     this.wireTetris(a);
@@ -292,6 +314,7 @@ export class GameApp {
 
   private startCrossVersus(): void {
     this.restart = () => this.startCrossVersus();
+    this.recorder = null;
     const a = new TetrisEngine({ rules: this.activeRules() });
     this.wireTetris(a);
     const inputA = new InputController(a, DEFAULT_KEYMAP_P1, this.handling());
@@ -355,7 +378,28 @@ export class GameApp {
       this.countdown -= dt;
       return;
     }
+    this.recorder?.advance(dt);
     this.session.tick(dt);
+  }
+
+  private startReplay(replay: Replay): void {
+    this.restart = () => this.startReplay(replay);
+    this.recorder = null;
+    this.startSession(new ReplaySession(replay), false);
+    this.setFooter('リプレイ視聴中 ／ P 一時停止 ／ メニューで終了');
+  }
+
+  private openReplays(): void {
+    this.overlay.showNode(
+      buildReplayScreen(
+        this.replayStore,
+        (replay) => this.startReplay(replay),
+        () => {
+          if (this.session && !this.session.isOver()) this.overlay.hide();
+          else this.showMenu();
+        },
+      ),
+    );
   }
 
   private boardCenter(i = 0): { x: number; y: number } {
@@ -470,6 +514,16 @@ export class GameApp {
     if (!o) return;
     if (o.kind === 'solo') this.stats.recordSolo(o);
     else this.stats.recordVersus(o);
+    // リプレイを保存（テトリス1Pのみ録画あり）。
+    if (this.recorder && o.kind === 'solo') {
+      this.replayStore.save({
+        mode: this.recordMode,
+        score: o.score,
+        lines: o.lines,
+        replay: this.recorder.toReplay(),
+      });
+      this.recorder = null;
+    }
   }
 
   private showResult(): void {

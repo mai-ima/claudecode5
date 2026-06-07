@@ -4,7 +4,7 @@ import { TetrisEngine } from '../modes/tetris/TetrisEngine';
 import type { TetrisEngineOptions } from '../modes/tetris/TetrisEngine';
 import type { RecordedAction, Replay } from './Recorder';
 
-function applyAction(engine: TetrisEngine, action: RecordedAction): void {
+export function applyAction(engine: TetrisEngine, action: RecordedAction): void {
   switch (action) {
     case 'moveLeft':
       engine.moveLeft();
