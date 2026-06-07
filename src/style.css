@@ -339,3 +339,45 @@ canvas {
   min-width: 110px;
   text-align: center;
 }
+
+/* ---- プリセット画面 ---- */
+.overlay-panel.presets {
+  min-width: 360px;
+}
+
+.preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0;
+  max-height: 58vh;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+.preset-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.preset-desc {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.preset-row button {
+  margin: 0;
+  white-space: nowrap;
+}

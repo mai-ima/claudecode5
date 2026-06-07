@@ -4,6 +4,8 @@ import type { CellId } from '../shared/snapshot';
  * UI テーマ（背景・枠・文字など）は本家（モダンガイドライン）相当で固定。
  * スキンでは変更しない。
  */
+export type BackgroundEffect = 'none' | 'gradient' | 'particles' | 'scanline';
+
 export interface Theme {
   name: string;
   background: string;
@@ -11,7 +13,10 @@ export interface Theme {
   grid: string;
   text: string;
   accent: string;
+  accent2: string;
   ghostAlpha: number;
+  /** 背景演出（プリセットで一変）。 */
+  backgroundEffect: BackgroundEffect;
 }
 
 export const UI_THEME: Theme = {
@@ -21,8 +26,17 @@ export const UI_THEME: Theme = {
   grid: '#21262d',
   text: '#e6edf3',
   accent: '#58a6ff',
+  accent2: '#a855f7',
   ghostAlpha: 0.28,
+  backgroundEffect: 'gradient',
 };
+
+let activeTheme: Theme = UI_THEME;
+
+/** UI スタイル（プリセット）を切り替える。 */
+export function setUiStyle(theme: Theme): void {
+  activeTheme = theme;
+}
 
 /** ミノ（ブロック）の見た目だけを定義するスキン。UI は変えない。 */
 export interface MinoSkin {
@@ -61,9 +75,9 @@ export const DEFAULT_SKIN: MinoSkin = {
 
 let activeSkin: MinoSkin = DEFAULT_SKIN;
 
-/** 固定 UI テーマを返す。 */
+/** 現在の UI テーマを返す。 */
 export function getTheme(): Theme {
-  return UI_THEME;
+  return activeTheme;
 }
 
 /** 現在のミノスキンを返す。 */

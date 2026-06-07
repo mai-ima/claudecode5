@@ -165,9 +165,19 @@ export function tryRotate(
   board: TetrisBoard,
   piece: ActivePiece,
   to: Rotation,
+  system: 'srs' | 'classic' = 'srs',
 ): RotationOutcome | null {
   // O は回転しても形が変わらない（キック不要）。
   if (piece.type === 'O') {
+    const rotated = rotatedPiece(piece, to);
+    if (!board.collides(pieceCells(rotated))) {
+      return { piece: rotated, kick: { index: 0, dx: 0, dy: 0 } };
+    }
+    return null;
+  }
+
+  // クラシックは壁蹴り無し（その場回転のみ）。
+  if (system === 'classic') {
     const rotated = rotatedPiece(piece, to);
     if (!board.collides(pieceCells(rotated))) {
       return { piece: rotated, kick: { index: 0, dx: 0, dy: 0 } };

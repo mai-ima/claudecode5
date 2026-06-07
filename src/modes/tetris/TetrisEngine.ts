@@ -1,4 +1,3 @@
-import { NEXT_COUNT, TIMING } from '../../config/constants';
 import { linesToLevelUp } from '../../config/scoring';
 import { Emitter } from '../../shared/events';
 import type { EngineView } from '../../shared/engineView';
@@ -6,7 +5,8 @@ import type { Rng } from '../../shared/rng';
 import { createDefaultRng } from '../../shared/rng';
 import type { Snapshot } from '../../shared/snapshot';
 import { SevenBag } from './bag';
-import { gravityIntervalMs } from './gravity';
+import { makeRuleSet } from './ruleset';
+import type { TetrisRuleSet } from './ruleset';
 import { ccw, cw, flip, movedPiece, pieceCells, spawnPiece } from './piece';
 import { computeLockScore } from './scoring';
 import { tryRotate } from './srs';
@@ -35,8 +35,9 @@ export interface TetrisEvents extends Record<string, unknown> {
 
 export interface TetrisEngineOptions {
   rng?: Rng;
-  /** おじゃま行の穴位置を決める RNG（省略時は rng と同じ）。 */
   startLevel?: number;
+  /** ルールセット（本家プリセット）。省略時は既定（ガイドライン相当）。 */
+  rules?: Partial<TetrisRuleSet>;
 }
 
 /**
@@ -75,11 +76,18 @@ export class TetrisEngine implements EngineView {
   private lastKick: KickResult | null = null;
 
   private garbageQueue = 0;
+  private readonly rules: TetrisRuleSet;
 
   constructor(options: TetrisEngineOptions = {}) {
     this.rng = options.rng ?? createDefaultRng();
     this.bag = new SevenBag(this.rng);
     this.level = Math.max(1, options.startLevel ?? 1);
+    this.rules = makeRuleSet(options.rules);
+  }
+
+  /** 適用中のルールセット（入力ハンドリング等の参照用）。 */
+  getRules(): TetrisRuleSet {
+    return this.rules;
   }
 
   // ---- ライフサイクル -------------------------------------------------
@@ -181,6 +189,7 @@ export class TetrisEngine implements EngineView {
   }
 
   rotate180(): boolean {
+    if (!this.rules.allow180) return false;
     return this.applyRotation(flip(this.activeOrThrow().rotation));
   }
 
@@ -235,7 +244,7 @@ export class TetrisEngine implements EngineView {
 
     // 重力。
     this.gravityAccumulator += dtMs;
-    const interval = gravityIntervalMs(this.level, this.softDropActive);
+    const interval = this.rules.gravityMs(this.level, this.softDropActive);
     while (this.gravityAccumulator >= interval) {
       this.gravityAccumulator -= interval;
       if (this.canMove(0, 1)) {
@@ -256,7 +265,7 @@ export class TetrisEngine implements EngineView {
     // ロックディレイ。
     if (this.resting) {
       this.lockTimer += dtMs;
-      if (this.lockTimer >= TIMING.lockDelay) {
+      if (this.lockTimer >= this.rules.lockDelay) {
         this.lockPiece();
       }
     }
@@ -277,7 +286,7 @@ export class TetrisEngine implements EngineView {
       active: this.active,
       ghost: this.active ? this.computeGhost(this.active) : null,
       holdType: this.holdType,
-      nextTypes: this.bag.peek(NEXT_COUNT),
+      nextTypes: this.bag.peek(this.rules.nextCount),
       clearingRows: this.clearingRows,
       hud: {
         score: this.score,
@@ -317,7 +326,7 @@ export class TetrisEngine implements EngineView {
 
   private applyRotation(to: Rotation): boolean {
     if (this.phase !== 'playing' || !this.active) return false;
-    const outcome = tryRotate(this.board, this.active, to);
+    const outcome = tryRotate(this.board, this.active, to, this.rules.rotationSystem);
     if (!outcome) return false;
     this.active = outcome.piece;
     this.lastKick = outcome.kick;
@@ -329,7 +338,7 @@ export class TetrisEngine implements EngineView {
 
   /** 移動/回転時のロックディレイ・リセット処理。 */
   private onPieceMovedForLockReset(): void {
-    if (this.resting && this.lockResets < TIMING.lockResetLimit) {
+    if (this.resting && this.lockResets < this.rules.lockResetLimit) {
       this.lockTimer = 0;
       this.lockResets++;
     }
@@ -376,7 +385,10 @@ export class TetrisEngine implements EngineView {
   private lockPiece(): void {
     if (!this.active) return;
     const piece = this.active;
-    const tspin = detectTSpin(this.board, piece, this.lastActionWasRotation, this.lastKick);
+    const tspin =
+      this.rules.spinMode === 'none'
+        ? 'none'
+        : detectTSpin(this.board, piece, this.lastActionWasRotation, this.lastKick);
     this.board.place(pieceCells(piece), piece.type);
     this.events.emit('lock', { type: piece.type });
     this.active = null;
@@ -408,7 +420,7 @@ export class TetrisEngine implements EngineView {
 
       // 消去アニメーションへ。
       this.clearingRows = fullRows;
-      this.lineClearTimer = TIMING.lineClearDelay;
+      this.lineClearTimer = this.rules.lineClearDelay;
     } else {
       // T-Spin 0 ラインでも B2B は維持される（難消去扱い）。
       if (result.isDifficult) this.backToBack = true;

@@ -102,4 +102,16 @@ describe('TetrisEngine', () => {
     expect(a.getScore()).toBe(b.getScore());
     expect(a.getLines()).toBe(b.getLines());
   });
+
+  it('ルールセットで 180 回転を無効化できる', () => {
+    const e = new TetrisEngine({ rng: mulberry32(1), rules: { allow180: false } });
+    e.start();
+    expect(e.rotate180()).toBe(false);
+  });
+
+  it('ルールセットの nextCount がスナップショットに反映される', () => {
+    const e = new TetrisEngine({ rng: mulberry32(1), rules: { nextCount: 1 } });
+    e.start();
+    expect(e.getSnapshot().next.length).toBe(1);
+  });
 });

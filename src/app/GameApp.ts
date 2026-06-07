@@ -1,3 +1,4 @@
+import { AddonRegistry } from '../addons/registry';
 import { AudioManager } from '../audio/AudioManager';
 import { TetrisAiController } from '../ai/AiController';
 import { PuyoAiController } from '../ai/PuyoAiController';
@@ -7,6 +8,7 @@ import { InputController } from '../input/InputController';
 import { PuyoEngine } from '../modes/puyo/PuyoEngine';
 import { TetrisEngine } from '../modes/tetris/TetrisEngine';
 import { NetClient } from '../net/NetClient';
+import { drawBackground } from '../render/Background';
 import { drawText } from '../render/draw';
 import { HudRenderer } from '../render/HudRenderer';
 import { localizeClearLabel } from '../render/labels';
@@ -15,6 +17,7 @@ import type { MultiLayout } from '../render/layout';
 import { SnapshotRenderer } from '../render/SnapshotRenderer';
 import type { RenderOptions } from '../render/SnapshotRenderer';
 import { getTheme, setSkin } from '../render/theme';
+import type { TetrisRuleSet } from '../modes/tetris/ruleset';
 import type { Snapshot } from '../shared/snapshot';
 import { PluginRegistry } from '../plugins/registry';
 import { skinPlugin } from '../plugins/skins';
@@ -27,6 +30,7 @@ import { GameLoop } from './GameLoop';
 import { HighScoreStore } from './HighScoreStore';
 import { InputSwitch } from './InputSwitch';
 import { buildOptionsScreen } from './OptionsScreen';
+import { buildPresetScreen } from './PresetScreen';
 import { Overlay } from './Screens';
 import type { OverlayButton } from './Screens';
 import { Settings } from './Settings';
@@ -68,6 +72,7 @@ export class GameApp {
   private settings = new Settings();
   private highScores = new HighScoreStore();
   private registry = new PluginRegistry();
+  private addons = new AddonRegistry();
   private catalog: Catalog;
   private currency = new Currency();
   private store: StoreModel;
@@ -93,9 +98,10 @@ export class GameApp {
     const pauseBtn = button('ポーズ', () => this.session?.togglePause());
     this.aiBtn = button('AI代行', () => this.toggleAutopilot());
     this.soundBtn = button('', () => this.toggleSound());
+    const presetBtn = button('プリセット', () => this.openPresets());
     const optBtn = button('設定', () => this.openOptions());
     const storeBtn = button('ストア', () => this.openStore());
-    topbar.append(menuBtn, pauseBtn, this.aiBtn, this.soundBtn, optBtn, storeBtn);
+    topbar.append(menuBtn, pauseBtn, this.aiBtn, this.soundBtn, presetBtn, optBtn, storeBtn);
     this.root.appendChild(topbar);
 
     this.canvas = document.createElement('canvas');
@@ -115,8 +121,7 @@ export class GameApp {
     this.registry.register(skinPlugin);
     this.catalog = new Catalog(this.registry);
     this.store = new StoreModel(this.catalog, this.currency);
-    const skin = this.registry.findSkin(this.store.getEquipped());
-    if (skin) setSkin(skin);
+    this.applyLook();
 
     this.audio.setMuted(!this.settings.soundEnabled);
     this.updateSoundBtn();
@@ -174,12 +179,44 @@ export class GameApp {
   }
 
   private handling(): { das: number; arr: number } {
-    return { das: this.settings.all.das, arr: this.settings.all.arr };
+    const h = this.addons.getActive().tetrisRules?.handling;
+    return h ?? { das: this.settings.all.das, arr: this.settings.all.arr };
+  }
+
+  private activeRules(): Partial<TetrisRuleSet> {
+    return this.addons.getActive().tetrisRules ?? {};
+  }
+
+  /** プリセットの見た目を適用（ストアで装備中のミノがあれば優先）。 */
+  private applyLook(): void {
+    this.addons.apply();
+    const eq = this.store.getEquipped();
+    if (eq && eq !== 'guideline') {
+      const s = this.registry.findSkin(eq);
+      if (s) setSkin(s);
+    }
+  }
+
+  private openPresets(): void {
+    const phase = this.session?.views()[0]?.getSnapshot().phase;
+    const wasPlaying = this.session !== null && phase === 'playing';
+    if (wasPlaying) this.session?.togglePause();
+    this.overlay.showNode(
+      buildPresetScreen(
+        this.addons,
+        () => this.applyLook(),
+        () => {
+          this.overlay.hide();
+          if (wasPlaying) this.session?.togglePause();
+          else if (!this.session || this.session.isOver()) this.showMenu();
+        },
+      ),
+    );
   }
 
   private startTetris1P(goal: Goal = { type: 'marathon' }): void {
     this.restart = () => this.startTetris1P(goal);
-    const engine = new TetrisEngine();
+    const engine = new TetrisEngine({ rules: this.activeRules() });
     this.wireTetris(engine);
     engine.events.on('lineClear', ({ lines }) => this.currency.earn(lines * 10));
     const human = new InputController(engine, loadKeymap(), this.handling());
@@ -203,8 +240,8 @@ export class GameApp {
 
   private startLocalVersus(): void {
     this.restart = () => this.startLocalVersus();
-    const a = new TetrisEngine();
-    const b = new TetrisEngine();
+    const a = new TetrisEngine({ rules: this.activeRules() });
+    const b = new TetrisEngine({ rules: this.activeRules() });
     this.wireTetris(a);
     const inputA = new InputController(a, DEFAULT_KEYMAP_P1, this.handling());
     const inputB = new InputController(b, DEFAULT_KEYMAP_P2, this.handling());
@@ -216,8 +253,8 @@ export class GameApp {
 
   private startAiVersus(): void {
     this.restart = () => this.startAiVersus();
-    const a = new TetrisEngine();
-    const b = new TetrisEngine();
+    const a = new TetrisEngine({ rules: this.activeRules() });
+    const b = new TetrisEngine({ rules: this.activeRules() });
     this.wireTetris(a);
     const inputA = new InputController(a, loadKeymap(), this.handling());
     const aiB = new TetrisAiController(b, this.settings.all.aiLevel);
@@ -234,7 +271,7 @@ export class GameApp {
       this.showMenu();
       return;
     }
-    const local = new TetrisEngine();
+    const local = new TetrisEngine({ rules: this.activeRules() });
     this.wireTetris(local);
     const input = new InputController(local, loadKeymap(), this.handling());
     const dummy = new DummyEngine();
@@ -282,9 +319,7 @@ export class GameApp {
   }
 
   private render(): void {
-    const theme = getTheme();
-    this.ctx.fillStyle = theme.background;
-    this.ctx.fillRect(0, 0, this.layout.totalWidth, this.layout.totalHeight);
+    drawBackground(this.ctx, this.layout.totalWidth, this.layout.totalHeight, performance.now());
     if (!this.session) return;
 
     const blinkOn = Math.floor(performance.now() / 80) % 2 === 0;
