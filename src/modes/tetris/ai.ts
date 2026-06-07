@@ -212,6 +212,8 @@ interface SearchState {
   hold: PieceType | null;
   queue: PieceType[];
   reward: number;
+  /** reward + evaluate(board) を一度だけ計算して保持（ソート高速化）。 */
+  score: number;
   first: MoveDecision | null;
 }
 
@@ -224,18 +226,19 @@ function placeChildren(
   usedHold: boolean,
 ): void {
   for (const { placement, piece } of enumeratePlacements(state.board, pieceToPlace)) {
+    // クローンは 1 回だけ。消去は同じ盤面で行い、余分な確保を避ける。
     const after = state.board.clone();
     after.place(pieceCells(piece), pieceToPlace);
     const lines = completeLines(after);
-    const pc = lines > 0 && isEmptyAfterClear(after);
-    const cleared = after.clone();
-    cleared.clearLines(cleared.findFullLines());
+    if (lines > 0) after.clearLines(after.findFullLines());
+    const pc = lines > 0 && after.isEmpty();
     const reward = state.reward + (LINE_REWARD[lines] ?? 24) + (pc ? PC_REWARD : 0);
     out.push({
-      board: cleared,
+      board: after,
       hold: newHold,
       queue: restQueue,
       reward,
+      score: reward + evaluate(after),
       first: state.first ?? { useHold: usedHold, placement },
     });
   }
@@ -273,7 +276,9 @@ export function searchBestMove(
   beamWidth: number,
 ): MoveDecision | null {
   const startQueue = [current, ...next];
-  let beam: SearchState[] = [{ board, hold, queue: startQueue, reward: 0, first: null }];
+  let beam: SearchState[] = [
+    { board, hold, queue: startQueue, reward: 0, score: evaluate(board), first: null },
+  ];
   const plies = Math.max(1, Math.min(depth, startQueue.length));
 
   let best: SearchState | null = null;
@@ -281,7 +286,8 @@ export function searchBestMove(
     const nextStates: SearchState[] = [];
     for (const s of beam) nextStates.push(...children(s, true));
     if (nextStates.length === 0) break;
-    nextStates.sort((a, b) => b.reward + evaluate(b.board) - (a.reward + evaluate(a.board)));
+    // 事前計算した score で並べ替え（評価関数の再計算をしない）。
+    nextStates.sort((a, b) => b.score - a.score);
     beam = nextStates.slice(0, beamWidth);
     best = beam[0] ?? best;
   }

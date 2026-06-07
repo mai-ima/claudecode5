@@ -17,9 +17,9 @@ interface LevelCfg {
 const LEVELS: Record<AiLevel, LevelCfg> = {
   easy: { interval: 200, randomness: 0.3, searchDepth: 0, beamWidth: 1 },
   normal: { interval: 80, randomness: 0.04, searchDepth: 0, beamWidth: 1 },
-  hard: { interval: 34, randomness: 0, searchDepth: 2, beamWidth: 8 },
-  // プロ: ホールド込みで先読み（next 全部）＋広いビーム＝本物のプロ級。
-  pro: { interval: 14, randomness: 0, searchDepth: 6, beamWidth: 16 },
+  hard: { interval: 34, randomness: 0, searchDepth: 2, beamWidth: 6 },
+  // プロ: ホールド込みで先読み＋ビーム＝本物のプロ級（性能と強さの両立）。
+  pro: { interval: 14, randomness: 0, searchDepth: 4, beamWidth: 10 },
 };
 
 /**
@@ -28,6 +28,7 @@ const LEVELS: Record<AiLevel, LevelCfg> = {
  */
 export class TetrisAiController implements InputLike {
   private plan: MoveDecision | null = null;
+  private planned = false;
   private moveAcc = 0;
   private stuck = 0;
   private prevX = Number.NaN;
@@ -46,6 +47,7 @@ export class TetrisAiController implements InputLike {
   attach(): void {
     this.off = this.engine.events.on('spawn', () => {
       this.plan = null;
+      this.planned = false;
       this.didHold = false;
       this.stuck = 0;
       this.prevX = Number.NaN;
@@ -61,7 +63,11 @@ export class TetrisAiController implements InputLike {
     const active = this.engine.getActive();
     if (!active) return;
 
-    if (this.plan === null) this.plan = this.think(active.type);
+    // 計画は 1 ピースにつき 1 回だけ（毎フレーム探索しないことで「かくつき」を防ぐ）。
+    if (!this.planned) {
+      this.plan = this.think(active.type);
+      this.planned = true;
+    }
     if (!this.plan) return;
 
     this.moveAcc += dt;
@@ -73,6 +79,7 @@ export class TetrisAiController implements InputLike {
       this.engine.hold();
       this.didHold = true;
       this.plan = null;
+      this.planned = false; // 入れ替え後のピースで一度だけ再計画。
       return;
     }
 
