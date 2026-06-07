@@ -30,7 +30,7 @@ describe('Catalog', () => {
   it('登録スキンを商品として返す', () => {
     const { catalog } = setup(0);
     const ids = catalog.entries().map((e) => e.id);
-    expect(ids).toContain('classic');
+    expect(ids).toContain('guideline');
     expect(ids).toContain('neon');
   });
 });
@@ -42,8 +42,8 @@ describe('StoreModel', () => {
   });
 
   it('無料スキンは最初から所持・装備可能', () => {
-    expect(env.store.isOwned('classic')).toBe(true);
-    expect(env.store.getEquipped()).toBe('classic');
+    expect(env.store.isOwned('guideline')).toBe(true);
+    expect(env.store.getEquipped()).toBe('guideline');
   });
 
   it('十分な残高で購入できる', () => {

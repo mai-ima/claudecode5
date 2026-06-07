@@ -11,7 +11,7 @@ import { localizeClearLabel } from '../render/labels';
 import { multiBoardLayout } from '../render/layout';
 import type { MultiLayout } from '../render/layout';
 import { SnapshotRenderer } from '../render/SnapshotRenderer';
-import { getTheme, setTheme } from '../render/theme';
+import { getTheme, setSkin } from '../render/theme';
 import { PluginRegistry } from '../plugins/registry';
 import { skinPlugin } from '../plugins/skins';
 import { Catalog } from '../store/Catalog';
@@ -90,7 +90,7 @@ export class GameApp {
     this.catalog = new Catalog(this.registry);
     this.store = new StoreModel(this.catalog, this.currency);
     const skin = this.registry.findSkin(this.store.getEquipped());
-    if (skin) setTheme(skin.theme);
+    if (skin) setSkin(skin);
 
     this.audio.setMuted(!this.settings.soundEnabled);
     this.updateSoundBtn();
@@ -410,8 +410,14 @@ export class GameApp {
     this.session = null;
   }
 
+  private boardDims(): { cols: number; rows: number } {
+    const snap = this.session?.views()[0]?.getSnapshot();
+    return snap ? { cols: snap.cols, rows: snap.rows } : { cols: 10, rows: 20 };
+  }
+
   private computeLayout(count: number): MultiLayout {
-    return multiBoardLayout(window.innerWidth * 0.96, window.innerHeight * 0.9, count);
+    const { cols, rows } = this.boardDims();
+    return multiBoardLayout(window.innerWidth * 0.96, window.innerHeight * 0.9, count, cols, rows);
   }
 
   private resize(): void {

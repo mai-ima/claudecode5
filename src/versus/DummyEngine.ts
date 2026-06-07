@@ -39,6 +39,8 @@ export class DummyEngine implements EngineView {
       Array.from({ length: width }, () => emptyCell()),
     );
     return {
+      cols: width,
+      rows: height,
       grid,
       next: [],
       hold: null,

@@ -23,7 +23,7 @@ export class StoreModel {
     for (const entry of this.catalog.entries()) {
       if (entry.price === 0) this.owned.add(entry.id);
     }
-    this.equipped = this.loadEquipped() ?? 'classic';
+    this.equipped = this.loadEquipped() ?? 'guideline';
   }
 
   isOwned(id: string): boolean {

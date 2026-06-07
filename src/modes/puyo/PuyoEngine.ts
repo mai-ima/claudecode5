@@ -3,7 +3,7 @@ import type { EngineView } from '../../shared/engineView';
 import type { Rng } from '../../shared/rng';
 import { createDefaultRng } from '../../shared/rng';
 import type { Snapshot } from '../../shared/snapshot';
-import { clearOnce, garbageFromScore } from './chain';
+import { garbageFromScore, planClear } from './chain';
 import { dropGarbage } from './garbage';
 import { PUYO_BUFFER, PuyoBoard } from './PuyoBoard';
 import { buildPuyoSnapshot } from './toSnapshot';
@@ -270,13 +270,24 @@ export class PuyoEngine implements EngineView {
     if (this.beatTimer > 0) return;
     this.beatTimer = CHAIN_BEAT_MS;
 
-    this.resolveChainIndex++;
-    const step = clearOnce(this.board, this.resolveChainIndex);
-    if (step) {
-      this.score += step.score;
-      this.dropScore += step.score;
-      this.maxChain = step.chain;
+    // フラッシュ表示中だったセルを実際に消去して落下させる。
+    if (this.clearing.size > 0) {
+      for (const idx of this.clearing) {
+        this.board.clearCell(idx % this.board.width, Math.floor(idx / this.board.width));
+      }
+      this.clearing.clear();
       this.board.applyGravity();
+      return;
+    }
+
+    // 次の連鎖を判定し、消えるセルを点滅登録（消去は次ビート）。
+    this.resolveChainIndex++;
+    const plan = planClear(this.board, this.resolveChainIndex);
+    if (plan) {
+      this.score += plan.step.score;
+      this.dropScore += plan.step.score;
+      this.maxChain = plan.step.chain;
+      this.clearing = new Set(plan.cells);
       return;
     }
 

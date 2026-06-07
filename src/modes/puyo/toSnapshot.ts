@@ -1,4 +1,4 @@
-import { PUYO_BUFFER, PUYO_VISIBLE_HEIGHT } from './PuyoBoard';
+import { PUYO_BUFFER, PUYO_VISIBLE_HEIGHT, PUYO_WIDTH } from './PuyoBoard';
 import type { PuyoBoard } from './PuyoBoard';
 import type { CellId, HudInfo, PiecePreview, RenderCell, Snapshot } from '../../shared/snapshot';
 import { emptyCell } from '../../shared/snapshot';
@@ -47,6 +47,8 @@ export function buildPuyoSnapshot(input: PuyoSnapshotInput): Snapshot {
   if (active) overlayPair(grid, board.width, active, false);
 
   return {
+    cols: PUYO_WIDTH,
+    rows: PUYO_VISIBLE_HEIGHT,
     grid,
     next: input.nextPairs.map(pairPreview),
     hold: null,

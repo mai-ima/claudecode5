@@ -2,7 +2,7 @@ import type { PluginRegistry } from '../plugins/registry';
 import type { Catalog } from '../store/Catalog';
 import type { Currency } from '../store/Currency';
 import type { StoreModel } from '../store/StoreModel';
-import { setTheme } from '../render/theme';
+import { setSkin } from '../render/theme';
 
 /**
  * 模擬ストア画面の DOM を構築する。スキンの購入・装備ができる。
@@ -76,7 +76,7 @@ export function buildStoreScreen(
 
   const applyEquipped = (): void => {
     const skin = registry.findSkin(store.getEquipped());
-    if (skin) setTheme(skin.theme);
+    if (skin) setSkin(skin);
   };
 
   renderRow();

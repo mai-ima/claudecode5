@@ -53,6 +53,10 @@ export interface HudInfo {
 
 /** 1 フレームの完全な描画用状態。Renderer はこれだけを見る。 */
 export interface Snapshot {
+  /** 盤面の可視列数（テトリス=10, ぷよ=6）。 */
+  cols: number;
+  /** 盤面の可視行数（テトリス=20, ぷよ=12）。 */
+  rows: number;
   /** 表示用グリッド（行優先、上が y=0）。 */
   grid: RenderCell[][];
   /** Next キュー（先頭が次）。 */

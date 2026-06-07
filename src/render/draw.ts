@@ -38,7 +38,9 @@ export function roundRect(
   ctx.closePath();
 }
 
-/** 立体感のあるブロックセルを描く（グラデーション + 光沢 + 縁取り）。 */
+export type CellStyle = 'gradient' | 'flat' | 'outline';
+
+/** ブロックセルを描く。スキンの style に応じて見た目を変える。 */
 export function drawCell(
   ctx: CanvasRenderingContext2D,
   px: number,
@@ -46,6 +48,7 @@ export function drawCell(
   size: number,
   color: string,
   alpha = 1,
+  style: CellStyle = 'gradient',
 ): void {
   const gap = Math.max(1, Math.floor(size * 0.07));
   const x = px + gap;
@@ -56,6 +59,34 @@ export function drawCell(
   ctx.save();
   ctx.globalAlpha = alpha;
 
+  if (style === 'outline') {
+    ctx.globalAlpha = alpha * 0.18;
+    ctx.fillStyle = color;
+    roundRect(ctx, x, y, s, s, r);
+    ctx.fill();
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = Math.max(1.5, size * 0.08);
+    ctx.strokeStyle = color;
+    roundRect(ctx, x, y, s, s, r);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (style === 'flat') {
+    ctx.fillStyle = color;
+    roundRect(ctx, x, y, s, s, r);
+    ctx.fill();
+    ctx.globalAlpha = alpha * 0.5;
+    ctx.lineWidth = Math.max(1, size * 0.04);
+    ctx.strokeStyle = shade(color, -0.4);
+    roundRect(ctx, x, y, s, s, r);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  // gradient（既定・立体）。
   const grad = ctx.createLinearGradient(x, y, x, y + s);
   grad.addColorStop(0, shade(color, 0.32));
   grad.addColorStop(0.45, color);

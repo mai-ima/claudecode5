@@ -1,4 +1,4 @@
-import { BUFFER_HEIGHT, VISIBLE_HEIGHT } from '../../config/constants';
+import { BOARD_WIDTH, BUFFER_HEIGHT, VISIBLE_HEIGHT } from '../../config/constants';
 import type {
   CellId,
   HudInfo,
@@ -73,6 +73,8 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
   }
 
   return {
+    cols: BOARD_WIDTH,
+    rows: VISIBLE_HEIGHT,
     grid,
     next: input.nextTypes.map(pieceToPreview),
     hold: input.holdType ? pieceToPreview(input.holdType) : null,

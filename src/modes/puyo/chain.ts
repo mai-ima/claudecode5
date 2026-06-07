@@ -93,7 +93,14 @@ export interface ChainResult {
  * 1 連鎖ぶんの消去を実行する（落下は呼び出し側で事前に行う前提）。
  * 消すものが無ければ null。ステップ単位なのでアニメーションに使える。
  */
-export function clearOnce(board: PuyoBoard, chainIndex: number): ChainStep | null {
+/**
+ * 今消えるべきセルとスコアを計算する（盤面は変更しない）。
+ * フラッシュ演出のため、消去を 2 段（点滅→消去）に分けたい場合に使う。
+ */
+export function planClear(
+  board: PuyoBoard,
+  chainIndex: number,
+): { step: ChainStep; cells: number[] } | null {
   const groups = findClearGroups(board);
   if (groups.length === 0) return null;
 
@@ -130,11 +137,20 @@ export function clearOnce(board: PuyoBoard, chainIndex: number): ChainStep | nul
   const power = Math.max(1, chainPower(chainIndex) + cb + gb);
   const stepScore = 10 * colorCleared * power;
 
-  for (const idx of toClear) {
+  return {
+    step: { chain: chainIndex, clearedPuyos: toClear.size, score: stepScore, groups: groups.length },
+    cells: [...toClear],
+  };
+}
+
+/** 1 連鎖ぶんの消去を即時実行する（落下は呼び出し側）。 */
+export function clearOnce(board: PuyoBoard, chainIndex: number): ChainStep | null {
+  const plan = planClear(board, chainIndex);
+  if (!plan) return null;
+  for (const idx of plan.cells) {
     board.clearCell(idx % board.width, Math.floor(idx / board.width));
   }
-
-  return { chain: chainIndex, clearedPuyos: toClear.size, score: stepScore, groups: groups.length };
+  return plan.step;
 }
 
 /**

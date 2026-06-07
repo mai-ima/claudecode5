@@ -1,4 +1,3 @@
-import { VISIBLE_HEIGHT } from '../config/constants';
 import type { PiecePreview, Snapshot } from '../shared/snapshot';
 import { drawCell, drawText, roundRect, shade } from './draw';
 import { localizeClearLabel } from './labels';
@@ -30,7 +29,7 @@ export class HudRenderer {
 
   private drawNext(snapshot: Snapshot, layout: BoardLayout): void {
     const { cellSize, boardX } = layout;
-    const x = boardX + (10 + 0.4) * cellSize;
+    const x = boardX + (layout.cols + 0.4) * cellSize;
     const w = (RIGHT_PANEL_CELLS - 0.8) * cellSize;
     let y = layout.boardY;
     const count = Math.min(snapshot.next.length, 5);
@@ -85,7 +84,7 @@ export class HudRenderer {
       drawText(
         this.ctx,
         localizeClearLabel(snapshot.hud.lastClearLabel),
-        boardX + (10 * cellSize) / 2,
+        boardX + (layout.cols * cellSize) / 2,
         layout.boardY - cellSize * 0.05,
         { color: theme.accent, size: cellSize * 0.5, bold: true, align: 'center', baseline: 'bottom' },
       );
@@ -94,9 +93,9 @@ export class HudRenderer {
 
   /** 予告おじゃまゲージ（赤いセグメント）を盤面左脇に縦に描く。 */
   private drawGarbageGauge(snapshot: Snapshot, layout: BoardLayout): void {
-    const { cellSize, boardX, boardY } = layout;
+    const { cellSize, boardX, boardY, rows } = layout;
     const gx = boardX - cellSize * 0.45;
-    const total = VISIBLE_HEIGHT * cellSize;
+    const total = rows * cellSize;
     const gw = cellSize * 0.3;
     // 背景レール。
     this.ctx.fillStyle = 'rgba(255,255,255,0.06)';
@@ -104,7 +103,7 @@ export class HudRenderer {
     this.ctx.fill();
     if (snapshot.garbageQueue <= 0) return;
     const seg = cellSize;
-    const n = Math.min(VISIBLE_HEIGHT, snapshot.garbageQueue);
+    const n = Math.min(rows, snapshot.garbageQueue);
     for (let i = 0; i < n; i++) {
       const segY = boardY + total - (i + 1) * seg + cellSize * 0.08;
       this.ctx.fillStyle = i >= 4 ? '#ef4444' : '#f59e0b';
