@@ -202,6 +202,92 @@ function bestForType(board: TetrisBoard, type: PieceType, opts: ThinkOptions): S
   return { placement: best, score: bestScore };
 }
 
+// ---- ビーム探索（ホールド込み・複数手先読み：本格的な強さ）----
+
+const LINE_REWARD = [0, 1, 3, 6, 24]; // テトリス(4)を強く優先しつつ消去も許容。
+const PC_REWARD = 200;
+
+interface SearchState {
+  board: TetrisBoard;
+  hold: PieceType | null;
+  queue: PieceType[];
+  reward: number;
+  first: MoveDecision | null;
+}
+
+function placeChildren(
+  out: SearchState[],
+  state: SearchState,
+  pieceToPlace: PieceType,
+  restQueue: PieceType[],
+  newHold: PieceType | null,
+  usedHold: boolean,
+): void {
+  for (const { placement, piece } of enumeratePlacements(state.board, pieceToPlace)) {
+    const after = state.board.clone();
+    after.place(pieceCells(piece), pieceToPlace);
+    const lines = completeLines(after);
+    const pc = lines > 0 && isEmptyAfterClear(after);
+    const cleared = after.clone();
+    cleared.clearLines(cleared.findFullLines());
+    const reward = state.reward + (LINE_REWARD[lines] ?? 24) + (pc ? PC_REWARD : 0);
+    out.push({
+      board: cleared,
+      hold: newHold,
+      queue: restQueue,
+      reward,
+      first: state.first ?? { useHold: usedHold, placement },
+    });
+  }
+}
+
+function children(state: SearchState, allowHold: boolean): SearchState[] {
+  const out: SearchState[] = [];
+  const q = state.queue;
+  if (q.length === 0) return out;
+  // A: 先頭をそのまま置く。
+  placeChildren(out, state, q[0] as PieceType, q.slice(1), state.hold, false);
+  // B: ホールド/入れ替えてから置く。
+  if (allowHold) {
+    if (state.hold === null) {
+      if (q.length >= 2) {
+        placeChildren(out, state, q[1] as PieceType, q.slice(2), q[0] as PieceType, true);
+      }
+    } else {
+      placeChildren(out, state, state.hold, q.slice(1), q[0] as PieceType, true);
+    }
+  }
+  return out;
+}
+
+/**
+ * ビーム探索で最良の初手を決める（本格AI）。
+ * current＋next を使い、ホールドも選択肢に含めて depth 手先まで読む。
+ */
+export function searchBestMove(
+  board: TetrisBoard,
+  current: PieceType,
+  hold: PieceType | null,
+  next: PieceType[],
+  depth: number,
+  beamWidth: number,
+): MoveDecision | null {
+  const startQueue = [current, ...next];
+  let beam: SearchState[] = [{ board, hold, queue: startQueue, reward: 0, first: null }];
+  const plies = Math.max(1, Math.min(depth, startQueue.length));
+
+  let best: SearchState | null = null;
+  for (let d = 0; d < plies; d++) {
+    const nextStates: SearchState[] = [];
+    for (const s of beam) nextStates.push(...children(s, true));
+    if (nextStates.length === 0) break;
+    nextStates.sort((a, b) => b.reward + evaluate(b.board) - (a.reward + evaluate(a.board)));
+    beam = nextStates.slice(0, beamWidth);
+    best = beam[0] ?? best;
+  }
+  return best?.first ?? null;
+}
+
 /**
  * ホールドも含めた最良手を決める（プロ/上級向け）。
  * useHold=true なら一旦ホールドしてから placement を実行する。

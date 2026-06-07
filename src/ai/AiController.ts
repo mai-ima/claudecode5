@@ -1,5 +1,5 @@
 import type { InputLike } from '../app/Session';
-import { decideMove, enumeratePlacements } from '../modes/tetris/ai';
+import { decideMove, enumeratePlacements, searchBestMove } from '../modes/tetris/ai';
 import type { MoveDecision } from '../modes/tetris/ai';
 import type { TetrisEngine } from '../modes/tetris/TetrisEngine';
 import type { PieceType } from '../modes/tetris/types';
@@ -9,16 +9,17 @@ export type AiLevel = 'easy' | 'normal' | 'hard' | 'pro';
 interface LevelCfg {
   interval: number;
   randomness: number;
-  lookahead: boolean;
-  allowHold: boolean;
-  usePro: boolean;
+  /** ビーム探索の深さ（0=単純最善手）。 */
+  searchDepth: number;
+  beamWidth: number;
 }
 
 const LEVELS: Record<AiLevel, LevelCfg> = {
-  easy: { interval: 200, randomness: 0.3, lookahead: false, allowHold: false, usePro: false },
-  normal: { interval: 80, randomness: 0.05, lookahead: false, allowHold: false, usePro: false },
-  hard: { interval: 36, randomness: 0, lookahead: true, allowHold: true, usePro: false },
-  pro: { interval: 16, randomness: 0, lookahead: true, allowHold: true, usePro: true },
+  easy: { interval: 200, randomness: 0.3, searchDepth: 0, beamWidth: 1 },
+  normal: { interval: 80, randomness: 0.04, searchDepth: 0, beamWidth: 1 },
+  hard: { interval: 34, randomness: 0, searchDepth: 2, beamWidth: 8 },
+  // プロ: ホールド込みで先読み（next 全部）＋広いビーム＝本物のプロ級。
+  pro: { interval: 14, randomness: 0, searchDepth: 6, beamWidth: 16 },
 };
 
 /**
@@ -112,12 +113,20 @@ export class TetrisAiController implements InputLike {
       return pick ? { useHold: false, placement: pick.placement } : null;
     }
 
+    // 上級/プロはホールド込みビーム探索で複数手先を読む。
+    if (cfg.searchDepth > 0) {
+      const next = this.engine.getNextTypes(cfg.searchDepth + 1);
+      const move = searchBestMove(board, type, this.engine.getHold(), next, cfg.searchDepth, cfg.beamWidth);
+      if (move) {
+        // 既にこのピースでホールド済みなら再ホールドしない。
+        return this.didHold ? { useHold: false, placement: move.placement } : move;
+      }
+    }
+
     return decideMove(board, type, {
-      lookahead: cfg.lookahead,
-      usePro: cfg.usePro,
-      allowHold: cfg.allowHold && !this.didHold,
+      allowHold: false,
       hold: this.engine.getHold(),
-      next: this.engine.getNextTypes(2),
+      next: this.engine.getNextTypes(1),
     });
   }
 }

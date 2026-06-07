@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bestPlacement, decideMove, enumeratePlacements, evaluate } from './ai';
+import { bestPlacement, decideMove, enumeratePlacements, evaluate, searchBestMove } from './ai';
 import { pieceCells } from './piece';
 import { TetrisBoard } from './TetrisBoard';
 import { PIECE_TYPES } from './types';
@@ -62,6 +62,24 @@ describe('Tetris AI', () => {
     expect(move).not.toBeNull();
     // I を今使えばテトリスできるのでホールドしない。
     expect(move?.useHold).toBe(false);
+  });
+
+  it('プロ探索: テトリス可能なら I を縦置きして4ライン消去', () => {
+    const board = new TetrisBoard();
+    for (let y = board.height - 4; y < board.height; y++) {
+      for (let x = 1; x < board.width; x++) board.setGarbage(x, y);
+    }
+    const move = searchBestMove(board, 'I', null, ['O', 'T', 'S', 'Z'], 6, 16);
+    expect(move).not.toBeNull();
+    expect(move?.useHold).toBe(false);
+    const after = applyPlacement(board, 'I', move!.placement);
+    expect(after.findFullLines().length).toBe(4);
+  });
+
+  it('プロ探索: 空盤でも合法な初手を返す', () => {
+    const move = searchBestMove(new TetrisBoard(), 'T', null, ['I', 'O', 'L', 'J'], 6, 16);
+    expect(move).not.toBeNull();
+    expect([0, 1, 2, 3]).toContain(move?.placement.rotation);
   });
 
   it('穴を作る手より作らない手を高く評価する', () => {
