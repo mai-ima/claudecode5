@@ -3,7 +3,7 @@ import { VersusController } from '../versus/VersusController';
 import type { Combatant } from '../versus/VersusController';
 import type { DummyEngine } from '../versus/DummyEngine';
 import type { NetClient } from '../net/NetClient';
-import type { InputLike, PlayableEngine, Session } from './Session';
+import type { InputLike, Outcome, PlayableEngine, Session } from './Session';
 
 export type GoalType = 'marathon' | 'sprint' | 'ultra';
 export interface Goal {
@@ -93,6 +93,17 @@ export class SinglePlayerSession implements Session {
     return [`スコア ${score}`];
   }
 
+  outcome(): Outcome {
+    return {
+      kind: 'solo',
+      mode: this.goal.type,
+      score: this.engine.getScore(),
+      lines: this.lines(),
+      timeMs: this.elapsed,
+      cleared: this.cleared,
+    };
+  }
+
   togglePause(): void {
     this.engine.togglePause();
   }
@@ -114,6 +125,7 @@ export class LocalVersusSession implements Session {
     private readonly inputB: InputLike,
     combatantA: Combatant,
     combatantB: Combatant,
+    private readonly rated: { opponentRating: number } | null = null,
   ) {
     this.versus = new VersusController(combatantA, combatantB);
   }
@@ -146,6 +158,16 @@ export class LocalVersusSession implements Session {
   resultLines(): string[] {
     const winner = this.versus.getWinner();
     return [winner === 0 ? 'プレイヤー1の勝ち！' : 'プレイヤー2の勝ち！'];
+  }
+
+  outcome(): Outcome {
+    const winner = this.versus.getWinner();
+    return {
+      kind: 'versus',
+      youWon: winner === null ? null : winner === 0,
+      rated: this.rated !== null,
+      ...(this.rated ? { opponentRating: this.rated.opponentRating } : {}),
+    };
   }
 
   togglePause(): void {
@@ -211,6 +233,16 @@ export class OnlineVersusSession implements Session {
     if (this.local.isGameOver() && !this.dummy.isGameOver()) return ['あなたの負け…'];
     if (this.dummy.isGameOver() && !this.local.isGameOver()) return ['あなたの勝ち！'];
     return ['引き分け'];
+  }
+
+  outcome(): Outcome {
+    const youWon =
+      this.dummy.isGameOver() && !this.local.isGameOver()
+        ? true
+        : this.local.isGameOver() && !this.dummy.isGameOver()
+          ? false
+          : null;
+    return { kind: 'versus', youWon, rated: true, opponentRating: 1000 };
   }
 
   togglePause(): void {

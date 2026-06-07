@@ -1,3 +1,5 @@
+import { Profile } from '../account/Profile';
+import { StatsStore } from '../account/StatsStore';
 import { AddonRegistry } from '../addons/registry';
 import { AudioManager } from '../audio/AudioManager';
 import { TetrisAiController } from '../ai/AiController';
@@ -33,6 +35,7 @@ import { HighScoreStore } from './HighScoreStore';
 import { InputSwitch } from './InputSwitch';
 import { buildOptionsScreen } from './OptionsScreen';
 import { buildPresetScreen } from './PresetScreen';
+import { buildProfileScreen } from './ProfileScreen';
 import { Overlay } from './Screens';
 import type { OverlayButton } from './Screens';
 import { Settings } from './Settings';
@@ -73,6 +76,8 @@ export class GameApp {
   private audio = new AudioManager();
   private settings = new Settings();
   private highScores = new HighScoreStore();
+  private profile = new Profile();
+  private stats = new StatsStore();
   private registry = new PluginRegistry();
   private addons = new AddonRegistry();
   private catalog: Catalog;
@@ -103,7 +108,8 @@ export class GameApp {
     const presetBtn = button('プリセット', () => this.openPresets());
     const optBtn = button('設定', () => this.openOptions());
     const storeBtn = button('ストア', () => this.openStore());
-    topbar.append(menuBtn, pauseBtn, this.aiBtn, this.soundBtn, presetBtn, optBtn, storeBtn);
+    const profBtn = button('プロフィール', () => this.openProfile());
+    topbar.append(menuBtn, pauseBtn, this.aiBtn, this.soundBtn, presetBtn, optBtn, storeBtn, profBtn);
     this.root.appendChild(topbar);
 
     this.canvas = document.createElement('canvas');
@@ -260,8 +266,11 @@ export class GameApp {
     this.wireTetris(a);
     const inputA = new InputController(a, loadKeymap(), this.handling());
     const aiB = new TetrisAiController(b, this.settings.all.aiLevel);
+    const ratingMap = { easy: 800, normal: 1000, hard: 1300 } as const;
     this.startSession(
-      new LocalVersusSession(a, inputA, b, aiB, tetrisCombatant(a), tetrisCombatant(b)),
+      new LocalVersusSession(a, inputA, b, aiB, tetrisCombatant(a), tetrisCombatant(b), {
+        opponentRating: ratingMap[this.settings.all.aiLevel],
+      }),
     );
     this.setFooter(FOOTER_AI);
   }
@@ -392,8 +401,16 @@ export class GameApp {
     }
   }
 
+  private recordOutcome(): void {
+    const o = this.session?.outcome?.();
+    if (!o) return;
+    if (o.kind === 'solo') this.stats.recordSolo(o);
+    else this.stats.recordVersus(o);
+  }
+
   private showResult(): void {
     if (!this.session) return;
+    this.recordOutcome();
     const score = this.session.views()[0]?.getSnapshot().hud.score ?? 0;
     const isHigh = score > 0 && score >= this.highScores.get();
     const lines = [...this.session.resultLines(), `ハイスコア  ${this.highScores.get().toLocaleString()}`];
@@ -461,6 +478,19 @@ export class GameApp {
     if (wasPlaying) this.session?.togglePause();
     this.overlay.showNode(
       buildStoreScreen(this.registry, this.catalog, this.currency, this.store, () => {
+        this.overlay.hide();
+        if (wasPlaying) this.session?.togglePause();
+        else if (!this.session || this.session.isOver()) this.showMenu();
+      }),
+    );
+  }
+
+  private openProfile(): void {
+    const phase = this.session?.views()[0]?.getSnapshot().phase;
+    const wasPlaying = this.session !== null && phase === 'playing';
+    if (wasPlaying) this.session?.togglePause();
+    this.overlay.showNode(
+      buildProfileScreen(this.profile, this.stats, () => {
         this.overlay.hide();
         if (wasPlaying) this.session?.togglePause();
         else if (!this.session || this.session.isOver()) this.showMenu();

@@ -20,6 +20,26 @@ export interface InputLike {
  * 1 つのゲームセッション。描画は GameApp が views() を使って行う。
  * tick の中身（単独 / ローカル 2P / オンライン）だけがモードごとに異なる。
  */
+/** ソロ結果（戦績記録用）。 */
+export interface SoloOutcome {
+  kind: 'solo';
+  mode: string;
+  score: number;
+  lines: number;
+  timeMs: number;
+  cleared: boolean;
+}
+
+/** 対戦結果（戦績記録用）。 */
+export interface VersusOutcome {
+  kind: 'versus';
+  youWon: boolean | null;
+  rated: boolean;
+  opponentRating?: number;
+}
+
+export type Outcome = SoloOutcome | VersusOutcome;
+
 export interface Session {
   readonly boardCount: number;
   start(): void;
@@ -31,4 +51,6 @@ export interface Session {
   dispose(): void;
   /** 盤上に小さく表示する追加情報（タイム/目標など）。任意。 */
   info?(): string[];
+  /** 戦績記録用の結果。任意。 */
+  outcome?(): Outcome;
 }
