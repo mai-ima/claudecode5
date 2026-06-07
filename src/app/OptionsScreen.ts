@@ -99,6 +99,17 @@ export function buildOptionsScreen(
   });
   row('AI難易度', aiSel);
 
+  // オンライン接続先。
+  row('オンライン: WS使用', toggle(() => settings.all.useWs, (v) => settings.update({ useWs: v })));
+  const wsInput = document.createElement('input');
+  wsInput.type = 'text';
+  wsInput.value = s.wsUrl;
+  wsInput.addEventListener('change', () => {
+    settings.update({ wsUrl: wsInput.value });
+    onChange();
+  });
+  row('WS URL', wsInput);
+
   // キー割当。
   const keyTitle = document.createElement('h2');
   keyTitle.textContent = 'キー設定';

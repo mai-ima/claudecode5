@@ -15,7 +15,7 @@ import { InputController } from '../input/InputController';
 import { PuyoEngine } from '../modes/puyo/PuyoEngine';
 import { TetrisEngine } from '../modes/tetris/TetrisEngine';
 import { NetClient } from '../net/NetClient';
-import { seedFromRoom } from '../net/transport';
+import { seedFromRoom, WebSocketTransport } from '../net/transport';
 import { mulberry32 } from '../shared/rng';
 import { drawBackground } from '../render/Background';
 import { Effects } from '../render/Effects';
@@ -318,6 +318,9 @@ export class GameApp {
     const dummy = new DummyEngine();
     const combatant = tetrisCombatant(local);
 
+    const transport = this.settings.all.useWs
+      ? new WebSocketTransport(this.settings.all.wsUrl)
+      : undefined;
     const net = new NetClient({
       onSnapshot: (snap) => dummy.setSnapshot(snap),
       onAttack: (amount) => local.queueGarbage(amount),
@@ -334,7 +337,7 @@ export class GameApp {
           ['オンラインAPIに接続できません', '`vercel dev` で起動するか Vercel にデプロイしてください', message],
           [{ label: 'メニューへ', onClick: () => this.showMenu(), primary: true }],
         ),
-    });
+    }, transport);
     combatant.onAttack((amount) => net.sendAttack(amount));
 
     this.overlay.show('対戦相手を待っています…', [`ルーム: ${room}`], [

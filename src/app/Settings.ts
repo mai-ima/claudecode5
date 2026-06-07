@@ -12,6 +12,10 @@ export interface SettingsData {
   das: number;
   arr: number;
   aiLevel: AiLevel;
+  /** オンライン接続を WS サーバにする（false=Vercel HTTP）。 */
+  useWs: boolean;
+  /** WS サーバ URL。 */
+  wsUrl: string;
 }
 
 const DEFAULTS: SettingsData = {
@@ -23,6 +27,8 @@ const DEFAULTS: SettingsData = {
   das: 133,
   arr: 33,
   aiLevel: 'normal',
+  useWs: false,
+  wsUrl: 'ws://localhost:8080',
 };
 
 export class Settings {
