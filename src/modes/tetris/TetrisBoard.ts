@@ -82,6 +82,11 @@ export class TetrisBoard {
     this.cells[this.index(x, y)] = 0;
   }
 
+  /** 盤面全体が空か（Perfect Clear 判定）。 */
+  isEmpty(): boolean {
+    return this.cells.every((c) => c === 0);
+  }
+
   /** 1 行が完全に埋まっているか。 */
   isLineFull(y: number): boolean {
     for (let x = 0; x < this.width; x++) {

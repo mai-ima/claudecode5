@@ -13,6 +13,34 @@ export interface Handling {
   arr: number;
 }
 
+/** 攻撃（おじゃま送り）テーブル。本家ごとに差し替える。 */
+export interface GarbageRules {
+  /** 通常消去のライン数(0..4)→送り段数。 */
+  lines: number[];
+  /** T-Spin full のライン数(0..3)→送り段数。 */
+  tspin: number[];
+  /** T-Spin mini のライン数(0..2)→送り段数。 */
+  tspinMini: number[];
+  /** Back-to-Back ボーナス（難消去連続）。 */
+  b2bBonus: number;
+  /** コンボ数→追加段数。 */
+  comboTable: number[];
+  /** Perfect Clear ボーナス段数。 */
+  perfectClear: number;
+  /** おじゃまの穴位置がバッチ内で変わる確率(0..1)。 */
+  messiness: number;
+}
+
+export const DEFAULT_GARBAGE: GarbageRules = {
+  lines: [0, 0, 1, 2, 4],
+  tspin: [0, 2, 4, 6],
+  tspinMini: [0, 0, 1],
+  b2bBonus: 1,
+  comboTable: [0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5],
+  perfectClear: 10,
+  messiness: 0,
+};
+
 export interface TetrisRuleSet {
   /** 入力ハンドリング（入力層が参照）。 */
   handling: Handling;
@@ -34,6 +62,8 @@ export interface TetrisRuleSet {
   allow180: boolean;
   /** スピン判定方式。 */
   spinMode: SpinMode;
+  /** 攻撃テーブル。 */
+  garbage: GarbageRules;
   /** レベルとソフト状態から 1 セル落下間隔(ms)を返す。 */
   gravityMs(level: number, soft: boolean): number;
 }
@@ -49,6 +79,7 @@ export const DEFAULT_RULESET: TetrisRuleSet = {
   rotationSystem: 'srs',
   allow180: true,
   spinMode: 'tspin',
+  garbage: DEFAULT_GARBAGE,
   gravityMs(level: number, soft: boolean): number {
     const ms = framesPerCell(level) * (1000 / 60);
     if (soft) return this.softDrop40G ? 0 : Math.max(1, ms / this.softDropFactor);

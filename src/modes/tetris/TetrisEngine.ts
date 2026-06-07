@@ -12,7 +12,7 @@ import { computeLockScore } from './scoring';
 import { tryRotate } from './srs';
 import { TetrisBoard } from './TetrisBoard';
 import { buildSnapshot } from './toSnapshot';
-import { detectTSpin } from './tspin';
+import { detectSpin } from './spin';
 import type { ActivePiece, KickResult, PieceType, Rotation, TSpinResult } from './types';
 import type { Phase } from './stateMachine';
 import { canTransition } from './stateMachine';
@@ -31,6 +31,8 @@ export interface TetrisEvents extends Record<string, unknown> {
   backToBack: { active: boolean };
   gameOver: undefined;
   spawn: { type: PieceType };
+  attack: { amount: number };
+  perfectClear: undefined;
 }
 
 export interface TetrisEngineOptions {
@@ -75,7 +77,8 @@ export class TetrisEngine implements EngineView {
   private lastActionWasRotation = false;
   private lastKick: KickResult | null = null;
 
-  private garbageQueue = 0;
+  /** 受けおじゃまキュー（各要素＝1行ぶんの穴位置）。 */
+  private incoming: number[] = [];
   private readonly rules: TetrisRuleSet;
 
   constructor(options: TetrisEngineOptions = {}) {
@@ -114,7 +117,7 @@ export class TetrisEngine implements EngineView {
     this.lineClearTimer = 0;
     this.clearingRows = [];
     this.softDropActive = false;
-    this.garbageQueue = 0;
+    this.incoming = [];
     this.phase = 'ready';
   }
 
@@ -273,9 +276,14 @@ export class TetrisEngine implements EngineView {
 
   // ---- 対戦用 ---------------------------------------------------------
 
-  /** 受信したおじゃまをキューに積む。 */
+  /** 受信したおじゃまをキューに積む（穴は1バッチ共通＋messinessで時々変更）。 */
   queueGarbage(amount: number): void {
-    if (amount > 0) this.garbageQueue += amount;
+    if (amount <= 0) return;
+    let hole = this.rng.int(this.board.width);
+    for (let i = 0; i < amount; i++) {
+      if (this.rng.next() < this.rules.garbage.messiness) hole = this.rng.int(this.board.width);
+      this.incoming.push(hole);
+    }
   }
 
   // ---- スナップショット ----------------------------------------------
@@ -296,7 +304,7 @@ export class TetrisEngine implements EngineView {
         backToBack: this.backToBack,
         ...(this.lastClearLabel !== undefined ? { lastClearLabel: this.lastClearLabel } : {}),
       },
-      garbageQueue: this.garbageQueue,
+      garbageQueue: this.incoming.length,
       phase: this.phase === 'ready' ? 'ready' : this.phase,
     });
   }
@@ -385,16 +393,20 @@ export class TetrisEngine implements EngineView {
   private lockPiece(): void {
     if (!this.active) return;
     const piece = this.active;
-    const tspin =
-      this.rules.spinMode === 'none'
-        ? 'none'
-        : detectTSpin(this.board, piece, this.lastActionWasRotation, this.lastKick);
+    const tspin = detectSpin(
+      this.board,
+      piece,
+      this.rules.spinMode,
+      this.lastActionWasRotation,
+      this.lastKick,
+    );
     this.board.place(pieceCells(piece), piece.type);
     this.events.emit('lock', { type: piece.type });
     this.active = null;
 
     const fullRows = this.board.findFullLines();
     const linesCleared = fullRows.length;
+    const isPC = linesCleared > 0 && this.isPerfectClear(fullRows);
 
     // スコア計算。
     const result = computeLockScore(
@@ -402,20 +414,30 @@ export class TetrisEngine implements EngineView {
       { level: this.level, combo: Math.max(0, this.comboCount), backToBack: this.backToBack },
     );
     this.score += result.points;
+    if (isPC) this.score += 3000 * this.level;
 
     if (linesCleared > 0) {
       this.comboCount++;
       if (this.comboCount > 0) this.events.emit('combo', { count: this.comboCount });
 
+      // 攻撃量を算出し、受けキューと相殺してから余剰を送る。
       const wasB2B = this.backToBack;
+      let attack = this.computeAttack(linesCleared, tspin, wasB2B, isPC);
+      while (attack > 0 && this.incoming.length > 0) {
+        this.incoming.pop();
+        attack--;
+      }
+      if (attack > 0) this.events.emit('attack', { amount: attack });
+
       this.backToBack = result.isDifficult;
       if (wasB2B !== this.backToBack) this.events.emit('backToBack', { active: this.backToBack });
 
-      this.lastClearLabel = result.label;
+      this.lastClearLabel = isPC ? 'Perfect Clear' : result.label;
+      if (isPC) this.events.emit('perfectClear', undefined);
       this.events.emit('lineClear', {
         lines: linesCleared,
         tspin,
-        ...(result.label !== undefined ? { label: result.label } : {}),
+        ...(this.lastClearLabel !== undefined ? { label: this.lastClearLabel } : {}),
       });
 
       // 消去アニメーションへ。
@@ -446,19 +468,44 @@ export class TetrisEngine implements EngineView {
     }
   }
 
-  /** キューされたおじゃま行を盤面下部に挿入する。 */
+  /** fullRows を消した後に盤面が空になるか（Perfect Clear）。 */
+  private isPerfectClear(fullRows: number[]): boolean {
+    const clone = this.board.clone();
+    clone.clearLines(fullRows);
+    return clone.isEmpty();
+  }
+
+  /** ルールの攻撃テーブルから送りおじゃま段数を算出する。 */
+  private computeAttack(
+    lines: number,
+    tspin: TSpinResult,
+    b2bActive: boolean,
+    isPC: boolean,
+  ): number {
+    const g = this.rules.garbage;
+    let atk: number;
+    if (tspin === 'full') atk = g.tspin[lines] ?? 0;
+    else if (tspin === 'mini') atk = g.tspinMini[lines] ?? 0;
+    else atk = g.lines[lines] ?? 0;
+
+    if (b2bActive && (lines === 4 || tspin !== 'none')) atk += g.b2bBonus;
+    atk += g.comboTable[Math.min(this.comboCount, g.comboTable.length - 1)] ?? 0;
+    if (isPC) atk += g.perfectClear;
+    return atk;
+  }
+
+  /** キュー済みのおじゃま行を盤面下部に挿入する（穴位置はキュー保持値）。 */
   private applyGarbage(): void {
-    if (this.garbageQueue <= 0) return;
-    const amount = this.garbageQueue;
-    this.garbageQueue = 0;
-    for (let i = 0; i < amount; i++) {
-      this.pushGarbageRow();
+    if (this.incoming.length === 0) return;
+    const rows = this.incoming;
+    this.incoming = [];
+    for (const hole of rows) {
+      this.pushGarbageRow(hole);
     }
   }
 
-  private pushGarbageRow(): void {
+  private pushGarbageRow(hole: number): void {
     // 全行を 1 つ上へずらし、最下行におじゃま（穴 1 つ）を作る。
-    const hole = this.rng.int(this.board.width);
     const shifted = new TetrisBoard();
     for (let y = 1; y < this.board.height; y++) {
       for (let x = 0; x < this.board.width; x++) {
