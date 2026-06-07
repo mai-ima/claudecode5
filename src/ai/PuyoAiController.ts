@@ -8,6 +8,7 @@ const MOVE_INTERVAL: Record<AiLevel, number> = {
   easy: 220,
   normal: 90,
   hard: 45,
+  pro: 26,
 };
 
 /** ぷよ用の内蔵AI操作器（InputLike）。 */

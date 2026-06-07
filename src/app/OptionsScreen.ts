@@ -1,3 +1,4 @@
+import type { AiLevel } from '../ai/AiController';
 import { DEFAULT_KEYMAP_P1, loadKeymap, saveKeymap } from '../config/controls';
 import type { InputAction, KeyMap } from '../config/controls';
 import type { Settings } from './Settings';
@@ -57,11 +58,39 @@ export function buildOptionsScreen(
 
   const s = settings.all;
 
+  const section = (t: string): void => {
+    const h = document.createElement('h2');
+    h.className = 'opt-subtitle';
+    h.textContent = t;
+    body.appendChild(h);
+  };
+
+  const aiSelect = (get: () => AiLevel, set: (v: AiLevel) => void): HTMLSelectElement => {
+    const sel = document.createElement('select');
+    for (const [val, lab] of [
+      ['easy', '弱'],
+      ['normal', '普通'],
+      ['hard', '強'],
+      ['pro', 'プロ'],
+    ] as const) {
+      const o = document.createElement('option');
+      o.value = val;
+      o.textContent = lab;
+      if (val === get()) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', () => {
+      set(sel.value as AiLevel);
+      onChange();
+    });
+    return sel;
+  };
+
+  // --- 表示 ---
+  section('表示');
   row('サウンド', toggle(() => settings.all.soundEnabled, (v) => settings.update({ soundEnabled: v })));
   row('ゴースト', toggle(() => settings.all.ghost, (v) => settings.update({ ghost: v })));
   row('グリッド', toggle(() => settings.all.grid, (v) => settings.update({ grid: v })));
-
-  // ネクスト数。
   const nextSel = document.createElement('select');
   for (let i = 1; i <= 6; i++) {
     const o = document.createElement('option');
@@ -76,31 +105,19 @@ export function buildOptionsScreen(
   });
   row('ネクスト数', nextSel);
 
-  // DAS / ARR。
+  // --- ハンドリング ---
+  section('ハンドリング');
   row('DAS (ms)', numberInput(s.das, 0, 500, (v) => settings.update({ das: v })));
   row('ARR (ms)', numberInput(s.arr, 0, 200, (v) => settings.update({ arr: v })));
 
-  // AI 難易度。
-  const aiSel = document.createElement('select');
-  for (const [val, lab] of [
-    ['easy', '弱'],
-    ['normal', '普通'],
-    ['hard', '強'],
-  ] as const) {
-    const o = document.createElement('option');
-    o.value = val;
-    o.textContent = lab;
-    if (val === s.aiLevel) o.selected = true;
-    aiSel.appendChild(o);
-  }
-  aiSel.addEventListener('change', () => {
-    settings.update({ aiLevel: aiSel.value as typeof s.aiLevel });
-    onChange();
-  });
-  row('AI難易度', aiSel);
+  // --- AI ---
+  section('AI');
+  row('敵AIの強さ', aiSelect(() => settings.all.aiEnemyLevel, (v) => settings.update({ aiEnemyLevel: v })));
+  row('AI代行の強さ', aiSelect(() => settings.all.aiAutoLevel, (v) => settings.update({ aiAutoLevel: v })));
 
-  // オンライン接続先。
-  row('オンライン: WS使用', toggle(() => settings.all.useWs, (v) => settings.update({ useWs: v })));
+  // --- オンライン ---
+  section('オンライン');
+  row('WS使用', toggle(() => settings.all.useWs, (v) => settings.update({ useWs: v })));
   const wsInput = document.createElement('input');
   wsInput.type = 'text';
   wsInput.value = s.wsUrl;

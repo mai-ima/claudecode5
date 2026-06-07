@@ -316,9 +316,27 @@ canvas {
 }
 
 .opt-subtitle {
-  margin: 10px 0 2px;
-  font-size: 14px;
+  margin: 14px 0 4px;
+  padding-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
   color: var(--accent);
+  border-bottom: 1px solid var(--border);
+}
+
+.opt-subtitle:first-child {
+  margin-top: 0;
+}
+
+.opt-row {
+  padding: 4px 2px;
+  border-radius: 8px;
+}
+
+.opt-row:hover {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .opt-row span {

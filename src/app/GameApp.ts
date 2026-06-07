@@ -260,7 +260,7 @@ export class GameApp {
     engine.events.on('lineClear', ({ lines }) => this.currency.earn(lines * 10));
     const recorder = new ReplayRecorder(seed, this.addons.getActive().id);
     const human = new InputController(wrapForRecording(engine, recorder), loadKeymap(), this.handling());
-    const ai = new TetrisAiController(engine, this.settings.all.aiLevel);
+    const ai = new TetrisAiController(engine, this.settings.all.aiAutoLevel);
     this.autopilot = new InputSwitch(human, ai);
     this.startSession(new SinglePlayerSession(engine, this.autopilot, goal));
     this.recorder = recorder;
@@ -275,7 +275,7 @@ export class GameApp {
     this.wirePuyo(engine);
     engine.events.on('chain', ({ count }) => this.currency.earn(count * 15));
     const human = new PuyoInputController(engine, DEFAULT_PUYO_KEYMAP_P1);
-    const ai = new PuyoAiController(engine, this.settings.all.aiLevel);
+    const ai = new PuyoAiController(engine, this.settings.all.aiAutoLevel);
     this.autopilot = new InputSwitch(human, ai);
     this.startSession(new SinglePlayerSession(engine, this.autopilot));
     this.setFooter(FOOTER_PUYO);
@@ -302,11 +302,11 @@ export class GameApp {
     const b = new TetrisEngine({ rules: this.activeRules() });
     this.wireTetris(a);
     const inputA = new InputController(a, loadKeymap(), this.handling());
-    const aiB = new TetrisAiController(b, this.settings.all.aiLevel);
-    const ratingMap = { easy: 800, normal: 1000, hard: 1300 } as const;
+    const aiB = new TetrisAiController(b, this.settings.all.aiEnemyLevel);
+    const ratingMap = { easy: 800, normal: 1000, hard: 1300, pro: 1700 } as const;
     this.startSession(
       new LocalVersusSession(a, inputA, b, aiB, tetrisCombatant(a), tetrisCombatant(b), {
-        opponentRating: ratingMap[this.settings.all.aiLevel],
+        opponentRating: ratingMap[this.settings.all.aiEnemyLevel],
       }),
     );
     this.setFooter(FOOTER_AI);

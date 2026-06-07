@@ -11,7 +11,10 @@ export interface SettingsData {
   boardOpacity: number;
   das: number;
   arr: number;
-  aiLevel: AiLevel;
+  /** 敵AI（対戦相手）の強さ。 */
+  aiEnemyLevel: AiLevel;
+  /** AI代行（オートプレイ）の強さ。 */
+  aiAutoLevel: AiLevel;
   /** オンライン接続を WS サーバにする（false=Vercel HTTP）。 */
   useWs: boolean;
   /** WS サーバ URL。 */
@@ -26,7 +29,8 @@ const DEFAULTS: SettingsData = {
   boardOpacity: 1,
   das: 133,
   arr: 33,
-  aiLevel: 'normal',
+  aiEnemyLevel: 'normal',
+  aiAutoLevel: 'normal',
   useWs: false,
   wsUrl: 'ws://localhost:8080',
 };

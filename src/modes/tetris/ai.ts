@@ -136,3 +136,96 @@ export function bestPlacement(
   }
   return best;
 }
+
+// ---- プロ思考（ホールド活用・テトリス/全消し意図・先読み）----
+
+/** プロ用ライン消去ボーナス（小消しを抑制し、テトリスと全消しを優先）。 */
+const PRO_LINE = [0, -3, -2, -1, 12];
+const PRO_PERFECT_CLEAR = 30;
+
+function isEmptyAfterClear(board: TetrisBoard): boolean {
+  const c = board.clone();
+  c.clearLines(c.findFullLines());
+  return c.isEmpty();
+}
+
+export interface ThinkOptions {
+  lookahead?: boolean;
+  usePro?: boolean;
+  allowHold?: boolean;
+  hold?: PieceType | null;
+  next?: PieceType[];
+}
+
+export interface MoveDecision {
+  useHold: boolean;
+  placement: Placement;
+}
+
+interface Scored {
+  placement: Placement | null;
+  score: number;
+}
+
+function bestForType(board: TetrisBoard, type: PieceType, opts: ThinkOptions): Scored {
+  let best: Placement | null = null;
+  let bestScore = -Infinity;
+  for (const { placement, piece } of enumeratePlacements(board, type)) {
+    const after = board.clone();
+    after.place(pieceCells(piece), type);
+    let score = evaluate(after);
+
+    if (opts.usePro) {
+      const lines = completeLines(after);
+      score += PRO_LINE[lines] ?? 12;
+      if (lines > 0 && isEmptyAfterClear(after)) score += PRO_PERFECT_CLEAR;
+    }
+
+    if (opts.lookahead && opts.next && opts.next.length > 0) {
+      const cleared = after.clone();
+      cleared.clearLines(cleared.findFullLines());
+      const nt = opts.next[0] as PieceType;
+      let bestNext = -Infinity;
+      for (const nc of enumeratePlacements(cleared, nt)) {
+        const nb = cleared.clone();
+        nb.place(pieceCells(nc.piece), nt);
+        bestNext = Math.max(bestNext, evaluate(nb));
+      }
+      if (bestNext > -Infinity) score += 0.6 * bestNext;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = placement;
+    }
+  }
+  return { placement: best, score: bestScore };
+}
+
+/**
+ * ホールドも含めた最良手を決める（プロ/上級向け）。
+ * useHold=true なら一旦ホールドしてから placement を実行する。
+ */
+export function decideMove(
+  board: TetrisBoard,
+  current: PieceType,
+  opts: ThinkOptions,
+): MoveDecision | null {
+  const cur = bestForType(board, current, opts);
+  let useHold = false;
+  let placement = cur.placement;
+  let score = cur.score;
+
+  if (opts.allowHold) {
+    const altType = opts.hold ?? opts.next?.[0];
+    if (altType) {
+      const alt = bestForType(board, altType, opts);
+      if (alt.placement && alt.score > score + 0.001) {
+        useHold = true;
+        placement = alt.placement;
+        score = alt.score;
+      }
+    }
+  }
+  return placement ? { useHold, placement } : null;
+}

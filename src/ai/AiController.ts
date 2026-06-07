@@ -1,26 +1,36 @@
 import type { InputLike } from '../app/Session';
-import { bestPlacement, enumeratePlacements } from '../modes/tetris/ai';
-import type { Placement } from '../modes/tetris/ai';
+import { decideMove, enumeratePlacements } from '../modes/tetris/ai';
+import type { MoveDecision } from '../modes/tetris/ai';
 import type { TetrisEngine } from '../modes/tetris/TetrisEngine';
 import type { PieceType } from '../modes/tetris/types';
 
-export type AiLevel = 'easy' | 'normal' | 'hard';
+export type AiLevel = 'easy' | 'normal' | 'hard' | 'pro';
 
-const MOVE_INTERVAL: Record<AiLevel, number> = {
-  easy: 170,
-  normal: 70,
-  hard: 35,
+interface LevelCfg {
+  interval: number;
+  randomness: number;
+  lookahead: boolean;
+  allowHold: boolean;
+  usePro: boolean;
+}
+
+const LEVELS: Record<AiLevel, LevelCfg> = {
+  easy: { interval: 200, randomness: 0.3, lookahead: false, allowHold: false, usePro: false },
+  normal: { interval: 80, randomness: 0.05, lookahead: false, allowHold: false, usePro: false },
+  hard: { interval: 36, randomness: 0, lookahead: true, allowHold: true, usePro: false },
+  pro: { interval: 16, randomness: 0, lookahead: true, allowHold: true, usePro: true },
 };
 
 /**
- * テトリス用の内蔵AI操作器。`InputLike` を実装し、人間の入力と同じ口で
- * エンジンを操作する（セッションにそのまま差し込める）。
+ * テトリス用の内蔵AI操作器（InputLike）。難易度で思考の深さ・速さ・
+ * ホールド活用・テトリス/全消し意図が変わる。
  */
 export class TetrisAiController implements InputLike {
-  private plan: Placement | null = null;
+  private plan: MoveDecision | null = null;
   private moveAcc = 0;
   private stuck = 0;
   private prevX = Number.NaN;
+  private didHold = false;
   private off: (() => void) | null = null;
 
   constructor(
@@ -33,9 +43,9 @@ export class TetrisAiController implements InputLike {
   }
 
   attach(): void {
-    // spawn ごとに再計画。
     this.off = this.engine.events.on('spawn', () => {
       this.plan = null;
+      this.didHold = false;
       this.stuck = 0;
       this.prevX = Number.NaN;
     });
@@ -54,24 +64,31 @@ export class TetrisAiController implements InputLike {
     if (!this.plan) return;
 
     this.moveAcc += dt;
-    if (this.moveAcc < MOVE_INTERVAL[this.level]) return;
+    if (this.moveAcc < LEVELS[this.level].interval) return;
     this.moveAcc = 0;
 
-    // 目標へ 1 アクションずつ寄せる。
-    if (active.rotation !== this.plan.rotation) {
+    // ホールドを使う手なら、まず一度だけホールドして再計画。
+    if (this.plan.useHold && !this.didHold) {
+      this.engine.hold();
+      this.didHold = true;
+      this.plan = null;
+      return;
+    }
+
+    const target = this.plan.placement;
+    if (active.rotation !== target.rotation) {
       this.engine.rotateCW();
       return;
     }
-    if (active.x < this.plan.x) {
+    if (active.x < target.x) {
       this.engine.moveRight();
-    } else if (active.x > this.plan.x) {
+    } else if (active.x > target.x) {
       this.engine.moveLeft();
     } else {
       this.engine.hardDrop();
       return;
     }
 
-    // 移動が詰まったら（壁等）ハードドロップでフォールバック。
     if (active.x === this.prevX) {
       this.stuck++;
       if (this.stuck > 2) {
@@ -84,18 +101,23 @@ export class TetrisAiController implements InputLike {
     this.prevX = active.x;
   }
 
-  private think(type: PieceType): Placement | null {
+  private think(type: PieceType): MoveDecision | null {
+    const cfg = LEVELS[this.level];
     const board = this.engine.getBoard();
+
     // easy はときどきわざと雑な手を選ぶ。
-    if (this.level === 'easy' && Math.random() < 0.28) {
+    if (cfg.randomness > 0 && Math.random() < cfg.randomness) {
       const cands = enumeratePlacements(board, type);
       const pick = cands[Math.floor(Math.random() * cands.length)];
-      return pick ? pick.placement : null;
+      return pick ? { useHold: false, placement: pick.placement } : null;
     }
-    const next = this.engine.getNextTypes(1)[0];
-    return bestPlacement(board, type, {
-      lookahead: this.level === 'hard',
-      ...(next ? { nextType: next } : {}),
+
+    return decideMove(board, type, {
+      lookahead: cfg.lookahead,
+      usePro: cfg.usePro,
+      allowHold: cfg.allowHold && !this.didHold,
+      hold: this.engine.getHold(),
+      next: this.engine.getNextTypes(2),
     });
   }
 }
