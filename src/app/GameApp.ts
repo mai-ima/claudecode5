@@ -8,6 +8,8 @@ import { InputController } from '../input/InputController';
 import { PuyoEngine } from '../modes/puyo/PuyoEngine';
 import { TetrisEngine } from '../modes/tetris/TetrisEngine';
 import { NetClient } from '../net/NetClient';
+import { seedFromRoom } from '../net/transport';
+import { mulberry32 } from '../shared/rng';
 import { drawBackground } from '../render/Background';
 import { drawText } from '../render/draw';
 import { HudRenderer } from '../render/HudRenderer';
@@ -271,7 +273,8 @@ export class GameApp {
       this.showMenu();
       return;
     }
-    const local = new TetrisEngine({ rules: this.activeRules() });
+    const seed = seedFromRoom(room);
+    const local = new TetrisEngine({ rng: mulberry32(seed), rules: this.activeRules() });
     this.wireTetris(local);
     const input = new InputController(local, loadKeymap(), this.handling());
     const dummy = new DummyEngine();
@@ -299,7 +302,7 @@ export class GameApp {
     this.overlay.show('対戦相手を待っています…', [`ルーム: ${room}`], [
       { label: 'キャンセル', onClick: () => { net.disconnect(); this.showMenu(); } },
     ]);
-    void net.connect(room);
+    net.connect(room);
   }
 
   // ---- ループ --------------------------------------------------------
