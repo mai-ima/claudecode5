@@ -10,6 +10,8 @@ export interface OverlayOptions {
   variant?: string;
   /** タイトル下の小見出し。 */
   subtitle?: string;
+  /** 見出しに表示する SVG ロゴ（指定時はタイトル文字の代わり）。 */
+  logoSvg?: string;
 }
 
 export class Overlay {
@@ -32,7 +34,12 @@ export class Overlay {
     panel.className = `overlay-panel${options.variant ? ` ${options.variant}` : ''}`;
 
     const h = document.createElement('h1');
-    h.textContent = title;
+    if (options.logoSvg) {
+      h.classList.add('has-logo');
+      h.innerHTML = options.logoSvg;
+    } else {
+      h.textContent = title;
+    }
     panel.appendChild(h);
 
     if (options.subtitle) {

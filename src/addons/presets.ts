@@ -18,6 +18,7 @@ const STYLE_PUYOTETRO: Theme = {
   accent2: '#4fe0ff',
   ghostAlpha: 0.3,
   backgroundEffect: 'particles',
+  fontFamily: "'Hiragino Maru Gothic ProN', 'Segoe UI Rounded', system-ui, 'Noto Sans JP', sans-serif",
 };
 
 const STYLE_GUIDELINE: Theme = {
@@ -30,6 +31,7 @@ const STYLE_GUIDELINE: Theme = {
   accent2: '#a855f7',
   ghostAlpha: 0.28,
   backgroundEffect: 'gradient',
+  fontFamily: "'Segoe UI', system-ui, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', Meiryo, sans-serif",
 };
 
 const STYLE_TETRIO: Theme = {
@@ -42,6 +44,7 @@ const STYLE_TETRIO: Theme = {
   accent2: '#9b8cff',
   ghostAlpha: 0.22,
   backgroundEffect: 'none',
+  fontFamily: "'Segoe UI', 'Roboto', system-ui, 'Noto Sans JP', sans-serif",
 };
 
 const STYLE_NES: Theme = {
@@ -54,6 +57,7 @@ const STYLE_NES: Theme = {
   accent2: '#fc9838',
   ghostAlpha: 0.18,
   backgroundEffect: 'scanline',
+  fontFamily: "'Courier New', 'DotGothic16', monospace",
 };
 
 // ---- ミノスキン ----

@@ -20,6 +20,7 @@ import { drawBackground } from '../render/Background';
 import { drawText } from '../render/draw';
 import { HudRenderer } from '../render/HudRenderer';
 import { localizeClearLabel } from '../render/labels';
+import { LOGO_SVG } from '../render/logo';
 import { multiBoardLayoutFor } from '../render/layout';
 import type { BoardDims, MultiLayout } from '../render/layout';
 import { SnapshotRenderer } from '../render/SnapshotRenderer';
@@ -174,7 +175,11 @@ export class GameApp {
         { label: 'プロフィール / 戦績', onClick: () => this.openProfile() },
         { label: '設定', onClick: () => this.openOptions() },
       ],
-      { variant: 'menu', subtitle: '本格パズル ― テトリス & ぷよぷよ / 対戦・AI対応' },
+      {
+        variant: 'menu',
+        subtitle: '本格パズル ― テトリス & ぷよぷよ / 対戦・AI対応',
+        logoSvg: LOGO_SVG,
+      },
     );
   }
 

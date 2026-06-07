@@ -17,7 +17,12 @@ export interface Theme {
   ghostAlpha: number;
   /** 背景演出（プリセットで一変）。 */
   backgroundEffect: BackgroundEffect;
+  /** UI フォント（プリセットで切替）。 */
+  fontFamily: string;
 }
+
+const DEFAULT_FONT =
+  "'Segoe UI', system-ui, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', Meiryo, sans-serif";
 
 export const UI_THEME: Theme = {
   name: 'guideline',
@@ -29,6 +34,7 @@ export const UI_THEME: Theme = {
   accent2: '#a855f7',
   ghostAlpha: 0.28,
   backgroundEffect: 'gradient',
+  fontFamily: DEFAULT_FONT,
 };
 
 let activeTheme: Theme = UI_THEME;
@@ -36,6 +42,20 @@ let activeTheme: Theme = UI_THEME;
 /** UI スタイル（プリセット）を切り替える。 */
 export function setUiStyle(theme: Theme): void {
   activeTheme = theme;
+  applyCssVars(theme);
+}
+
+/** UI テーマの色/フォントを CSS カスタムプロパティとして DOM に注入（全画面が一変）。 */
+export function applyCssVars(theme: Theme): void {
+  if (typeof document === 'undefined') return;
+  const r = document.documentElement.style;
+  r.setProperty('--bg', theme.background);
+  r.setProperty('--panel', theme.panel);
+  r.setProperty('--text', theme.text);
+  r.setProperty('--accent', theme.accent);
+  r.setProperty('--accent2', theme.accent2);
+  r.setProperty('--border', 'rgba(255,255,255,0.14)');
+  r.setProperty('--font', theme.fontFamily);
 }
 
 /** ミノ（ブロック）の見た目だけを定義するスキン。UI は変えない。 */

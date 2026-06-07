@@ -150,6 +150,18 @@ canvas {
   color: transparent;
 }
 
+.overlay-panel h1.has-logo {
+  background: none;
+  color: var(--accent);
+}
+
+.overlay-panel h1.has-logo svg {
+  display: block;
+  width: min(280px, 70vw);
+  height: auto;
+  margin: 0 auto;
+}
+
 .overlay-panel .subtitle {
   margin: 0 0 18px;
   color: var(--muted);
