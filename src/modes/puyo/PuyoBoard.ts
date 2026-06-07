@@ -85,6 +85,11 @@ export class PuyoBoard {
     return this.raw(x, y) === GARBAGE_CODE;
   }
 
+  /** 盤面全体が空か（全消し判定）。 */
+  isAllEmpty(): boolean {
+    return this.cells.every((c) => c === 0);
+  }
+
   /** 各列でぷよを底へ落とす（ちぎれ・連鎖後の落下）。 */
   applyGravity(): boolean {
     let moved = false;

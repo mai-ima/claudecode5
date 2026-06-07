@@ -26,6 +26,7 @@ export interface PuyoEvents extends Record<string, unknown> {
   lock: undefined;
   chain: { count: number; score: number };
   garbageSent: { amount: number };
+  zenkeshi: undefined;
   spawn: undefined;
   gameOver: undefined;
 }
@@ -38,7 +39,15 @@ interface PairColors {
 export interface PuyoEngineOptions {
   rng?: Rng;
   onSendGarbage?: (amount: number) => void;
+  /** 使用色数（4 または 5）。 */
+  colors?: number;
 }
+
+/** 全消しボーナス（送りおじゃま段数）。 */
+const ZENKESHI_BONUS = 30;
+/** マージンタイム開始(ms)と、以降の倍率ステップ間隔(ms)。 */
+const MARGIN_START_MS = 96000;
+const MARGIN_STEP_MS = 16000;
 
 /** ぷよぷよ・エンジン（テトリスとは完全に独立、DOM 非依存）。 */
 export class PuyoEngine implements EngineView {
@@ -63,11 +72,20 @@ export class PuyoEngine implements EngineView {
   private clearing = new Set<number>();
 
   private garbageQueue = 0;
+  private elapsed = 0;
   private readonly onSendGarbage: ((amount: number) => void) | undefined;
+  private readonly colorCount: number;
 
   constructor(options: PuyoEngineOptions = {}) {
     this.rng = options.rng ?? createDefaultRng();
     this.onSendGarbage = options.onSendGarbage;
+    this.colorCount = Math.max(3, Math.min(5, options.colors ?? PUYO_COLORS.length));
+  }
+
+  /** マージンタイムによる送り倍率。 */
+  private marginFactor(): number {
+    if (this.elapsed < MARGIN_START_MS) return 1;
+    return 1 + Math.min(6, Math.floor((this.elapsed - MARGIN_START_MS) / MARGIN_STEP_MS) + 1) * 0.25;
   }
 
   start(): void {
@@ -88,6 +106,7 @@ export class PuyoEngine implements EngineView {
     this.beatTimer = 0;
     this.clearing.clear();
     this.garbageQueue = 0;
+    this.elapsed = 0;
     this.phase = 'ready';
   }
 
@@ -151,10 +170,12 @@ export class PuyoEngine implements EngineView {
 
   tick(dtMs: number): void {
     if (this.phase === 'resolving') {
+      this.elapsed += dtMs;
       this.tickResolving(dtMs);
       return;
     }
     if (this.phase !== 'playing' || !this.active) return;
+    this.elapsed += dtMs;
 
     this.fallAccumulator += dtMs;
     const interval = this.softDrop ? SOFT_FALL_INTERVAL : FALL_INTERVAL;
@@ -299,7 +320,14 @@ export class PuyoEngine implements EngineView {
     // 連鎖終了。
     if (this.maxChain > 0) {
       this.events.emit('chain', { count: this.maxChain, score: this.dropScore });
-      const send = garbageFromScore(this.dropScore);
+      let send = garbageFromScore(this.dropScore);
+      // 全消し（zenkeshi）ボーナス。
+      if (this.board.isAllEmpty()) {
+        send += ZENKESHI_BONUS;
+        this.events.emit('zenkeshi', undefined);
+      }
+      // マージンタイム倍率。
+      send = Math.round(send * this.marginFactor());
       this.settleGarbage(send);
     } else {
       this.settleGarbage(0);
@@ -361,8 +389,8 @@ export class PuyoEngine implements EngineView {
   private fillQueue(n: number): void {
     while (this.queue.length < n) {
       this.queue.push({
-        axisColor: PUYO_COLORS[this.rng.int(PUYO_COLORS.length)] as PuyoColor,
-        childColor: PUYO_COLORS[this.rng.int(PUYO_COLORS.length)] as PuyoColor,
+        axisColor: PUYO_COLORS[this.rng.int(this.colorCount)] as PuyoColor,
+        childColor: PUYO_COLORS[this.rng.int(this.colorCount)] as PuyoColor,
       });
     }
   }

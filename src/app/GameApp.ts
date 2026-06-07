@@ -717,6 +717,12 @@ export class GameApp {
       this.effects.burst(c.x, c.y, getTheme().accent, 16 + count * 6);
       if (count >= 2) this.setBanner(`${count} れんさ！`, getTheme().accent);
     });
+    e.on('zenkeshi', () => {
+      const c = this.boardCenter();
+      this.effects.shake(18, 600);
+      this.effects.burst(c.x, c.y, getTheme().accent2, 60, 1.6);
+      this.setBanner('ぜんけし！', getTheme().accent2, 1500);
+    });
     e.on('gameOver', () => {
       this.audio.play('gameOver');
       this.highScores.submit(engine.getScore());

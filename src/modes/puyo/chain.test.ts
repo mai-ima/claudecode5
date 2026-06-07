@@ -80,6 +80,15 @@ describe('resolveChains', () => {
   });
 });
 
+describe('全消し（zenkeshi）', () => {
+  it('盤面の全ぷよが消えると isEmpty になる', () => {
+    const board = new PuyoBoard();
+    for (let x = 0; x < 4; x++) board.setColor(x, BOTTOM, 'red');
+    resolveChains(board);
+    expect(board.isAllEmpty()).toBe(true);
+  });
+});
+
 describe('garbageFromScore', () => {
   it('スコアに応じておじゃま数を返す', () => {
     expect(garbageFromScore(140, 70)).toBe(2);
