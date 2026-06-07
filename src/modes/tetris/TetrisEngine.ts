@@ -127,6 +127,21 @@ export class TetrisEngine implements EngineView {
     return this.board;
   }
 
+  /** AI 用: 現在のアクティブピースのコピー（無ければ null）。 */
+  getActive(): ActivePiece | null {
+    return this.active ? { ...this.active } : null;
+  }
+
+  /** AI 用: ホールド中のピース種（無ければ null）。 */
+  getHold(): PieceType | null {
+    return this.holdType;
+  }
+
+  /** AI 用: 次に出るピース種を n 個覗き見る。 */
+  getNextTypes(n: number): PieceType[] {
+    return this.bag.peek(n);
+  }
+
   getPhase(): Phase {
     return this.phase;
   }

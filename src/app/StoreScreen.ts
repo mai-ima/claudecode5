@@ -6,7 +6,7 @@ import { setSkin } from '../render/theme';
 
 /**
  * 模擬ストア画面の DOM を構築する。スキンの購入・装備ができる。
- * 装備時には setTheme でテーマを即時反映する。
+ * 装備時には setSkin でミノの見た目を即時反映する（UI は変えない）。
  */
 export function buildStoreScreen(
   registry: PluginRegistry,

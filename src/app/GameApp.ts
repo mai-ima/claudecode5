@@ -1,4 +1,6 @@
 import { AudioManager } from '../audio/AudioManager';
+import { TetrisAiController } from '../ai/AiController';
+import { PuyoAiController } from '../ai/PuyoAiController';
 import { DEFAULT_KEYMAP_P1, DEFAULT_KEYMAP_P2, loadKeymap } from '../config/controls';
 import { DEFAULT_PUYO_KEYMAP_P1, PuyoInputController } from '../input/PuyoInputController';
 import { InputController } from '../input/InputController';
@@ -11,7 +13,9 @@ import { localizeClearLabel } from '../render/labels';
 import { multiBoardLayout } from '../render/layout';
 import type { MultiLayout } from '../render/layout';
 import { SnapshotRenderer } from '../render/SnapshotRenderer';
+import type { RenderOptions } from '../render/SnapshotRenderer';
 import { getTheme, setSkin } from '../render/theme';
+import type { Snapshot } from '../shared/snapshot';
 import { PluginRegistry } from '../plugins/registry';
 import { skinPlugin } from '../plugins/skins';
 import { Catalog } from '../store/Catalog';
@@ -21,14 +25,28 @@ import { tetrisCombatant } from '../versus/combatants';
 import { DummyEngine } from '../versus/DummyEngine';
 import { GameLoop } from './GameLoop';
 import { HighScoreStore } from './HighScoreStore';
+import { InputSwitch } from './InputSwitch';
+import { buildOptionsScreen } from './OptionsScreen';
 import { Overlay } from './Screens';
 import type { OverlayButton } from './Screens';
 import { Settings } from './Settings';
 import { buildStoreScreen } from './StoreScreen';
 import { LocalVersusSession, OnlineVersusSession, SinglePlayerSession } from './sessions';
+import type { Goal } from './sessions';
 import type { Session } from './Session';
 
 const COUNTDOWN_MS = 3400;
+
+const FOOTER_TETRIS =
+  '操作: ←→ 移動 ／ ↓ ソフト ／ ↑・X 右回転 ／ Z 左回転 ／ A 180回転 ／ Space ハードドロップ ／ C ホールド ／ P ポーズ ／ R リスタート ／ F1 AI代行';
+const FOOTER_PUYO =
+  '操作: ←→ 移動 ／ ↓ ソフト ／ ↑・X 回転 ／ Z 逆回転 ／ A クイックターン ／ Space 落下 ／ P ポーズ ／ R リスタート ／ F1 AI代行';
+const FOOTER_VERSUS =
+  '1P: ←→ ↓ ↑/Z A Space C　／　2P: J L K I/U G H　／　P ポーズ・R リスタート';
+const FOOTER_AI =
+  'あなた(1P): ←→ 移動 ／ ↑ 回転 ／ Space ハードドロップ ／ C ホールド　／　相手: CPU　／　R リスタート';
+const FOOTER_ONLINE =
+  '操作: ←→ 移動 ／ ↑ 回転 ／ Space ハードドロップ ／ C ホールド ／ P ポーズ';
 
 interface Banner {
   text: string;
@@ -37,13 +55,14 @@ interface Banner {
   ttl: number;
 }
 
-/** アプリ全体のオーケストレーション（メニュー / セッション / 描画 / 演出 / ストア）。 */
+/** アプリ全体のオーケストレーション（メニュー / セッション / 描画 / 演出 / ストア / 設定）。 */
 export class GameApp {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private overlay: Overlay;
   private snapshotRenderer: SnapshotRenderer;
   private hudRenderer: HudRenderer;
+  private footer: HTMLDivElement;
 
   private audio = new AudioManager();
   private settings = new Settings();
@@ -55,6 +74,7 @@ export class GameApp {
 
   private layout: MultiLayout;
   private session: Session | null = null;
+  private autopilot: InputSwitch | null = null;
   private resultShown = false;
   private pauseShown = false;
   private countdown = 0;
@@ -62,6 +82,7 @@ export class GameApp {
   private restart: (() => void) | null = null;
   private loop: GameLoop;
   private soundBtn: HTMLButtonElement;
+  private aiBtn: HTMLButtonElement;
 
   constructor(private readonly root: HTMLElement) {
     this.root.textContent = '';
@@ -70,17 +91,22 @@ export class GameApp {
     topbar.className = 'topbar';
     const menuBtn = button('メニュー', () => this.showMenu());
     const pauseBtn = button('ポーズ', () => this.session?.togglePause());
-    const soundBtn = button('', () => this.toggleSound());
+    this.aiBtn = button('AI代行', () => this.toggleAutopilot());
+    this.soundBtn = button('', () => this.toggleSound());
+    const optBtn = button('設定', () => this.openOptions());
     const storeBtn = button('ストア', () => this.openStore());
-    topbar.append(menuBtn, pauseBtn, soundBtn, storeBtn);
+    topbar.append(menuBtn, pauseBtn, this.aiBtn, this.soundBtn, optBtn, storeBtn);
     this.root.appendChild(topbar);
-    this.soundBtn = soundBtn;
 
     this.canvas = document.createElement('canvas');
     this.root.appendChild(this.canvas);
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('2D context unavailable');
     this.ctx = ctx;
+
+    this.footer = document.createElement('div');
+    this.footer.className = 'help-footer';
+    this.root.appendChild(this.footer);
 
     this.overlay = new Overlay(this.root);
     this.snapshotRenderer = new SnapshotRenderer(ctx);
@@ -97,7 +123,7 @@ export class GameApp {
 
     this.layout = this.computeLayout(1);
     window.addEventListener('resize', () => this.resize());
-    window.addEventListener('keydown', () => this.audio.resume(), { once: true });
+    window.addEventListener('keydown', (e) => this.onGlobalKey(e));
 
     this.loop = new GameLoop(
       (dt) => this.step(dt),
@@ -112,17 +138,24 @@ export class GameApp {
 
   private showMenu(): void {
     this.disposeSession();
+    this.autopilot = null;
     this.pauseShown = false;
+    this.updateAiBtn();
+    this.setFooter('');
     this.overlay.show(
       'テトリス',
       [`ハイスコア  ${this.highScores.get().toLocaleString()}`],
       [
         { label: 'ひとりプレイ（テトリス）', onClick: () => this.startTetris1P(), primary: true },
         { label: 'ぷよぷよ', onClick: () => this.startPuyo1P() },
+        { label: 'スプリント40', onClick: () => this.startTetris1P({ type: 'sprint', lines: 40 }) },
+        { label: 'ウルトラ2分', onClick: () => this.startTetris1P({ type: 'ultra', timeMs: 120000 }) },
         { label: 'ローカル対戦（2人）', onClick: () => this.startLocalVersus() },
+        { label: 'AIと対戦（テトリス）', onClick: () => this.startAiVersus() },
         { label: 'オンライン対戦', onClick: () => this.startOnline() },
+        { label: '設定', onClick: () => this.openOptions() },
       ],
-      { variant: 'menu', subtitle: '本格パズル ― テトリス & ぷよぷよ / 対戦対応' },
+      { variant: 'menu', subtitle: '本格パズル ― テトリス & ぷよぷよ / 対戦・AI対応' },
     );
   }
 
@@ -136,16 +169,24 @@ export class GameApp {
     this.layout = this.computeLayout(session.boardCount);
     this.resize();
     session.start();
+    this.updateAiBtn();
     this.overlay.hide();
   }
 
-  private startTetris1P(): void {
-    this.restart = () => this.startTetris1P();
+  private handling(): { das: number; arr: number } {
+    return { das: this.settings.all.das, arr: this.settings.all.arr };
+  }
+
+  private startTetris1P(goal: Goal = { type: 'marathon' }): void {
+    this.restart = () => this.startTetris1P(goal);
     const engine = new TetrisEngine();
     this.wireTetris(engine);
     engine.events.on('lineClear', ({ lines }) => this.currency.earn(lines * 10));
-    const input = new InputController(engine, loadKeymap());
-    this.startSession(new SinglePlayerSession(engine, input));
+    const human = new InputController(engine, loadKeymap(), this.handling());
+    const ai = new TetrisAiController(engine, this.settings.all.aiLevel);
+    this.autopilot = new InputSwitch(human, ai);
+    this.startSession(new SinglePlayerSession(engine, this.autopilot, goal));
+    this.setFooter(FOOTER_TETRIS);
   }
 
   private startPuyo1P(): void {
@@ -153,8 +194,11 @@ export class GameApp {
     const engine = new PuyoEngine();
     this.wirePuyo(engine);
     engine.events.on('chain', ({ count }) => this.currency.earn(count * 15));
-    const input = new PuyoInputController(engine, DEFAULT_PUYO_KEYMAP_P1);
-    this.startSession(new SinglePlayerSession(engine, input));
+    const human = new PuyoInputController(engine, DEFAULT_PUYO_KEYMAP_P1);
+    const ai = new PuyoAiController(engine, this.settings.all.aiLevel);
+    this.autopilot = new InputSwitch(human, ai);
+    this.startSession(new SinglePlayerSession(engine, this.autopilot));
+    this.setFooter(FOOTER_PUYO);
   }
 
   private startLocalVersus(): void {
@@ -162,11 +206,25 @@ export class GameApp {
     const a = new TetrisEngine();
     const b = new TetrisEngine();
     this.wireTetris(a);
-    const inputA = new InputController(a, DEFAULT_KEYMAP_P1);
-    const inputB = new InputController(b, DEFAULT_KEYMAP_P2);
+    const inputA = new InputController(a, DEFAULT_KEYMAP_P1, this.handling());
+    const inputB = new InputController(b, DEFAULT_KEYMAP_P2, this.handling());
     this.startSession(
       new LocalVersusSession(a, inputA, b, inputB, tetrisCombatant(a), tetrisCombatant(b)),
     );
+    this.setFooter(FOOTER_VERSUS);
+  }
+
+  private startAiVersus(): void {
+    this.restart = () => this.startAiVersus();
+    const a = new TetrisEngine();
+    const b = new TetrisEngine();
+    this.wireTetris(a);
+    const inputA = new InputController(a, loadKeymap(), this.handling());
+    const aiB = new TetrisAiController(b, this.settings.all.aiLevel);
+    this.startSession(
+      new LocalVersusSession(a, inputA, b, aiB, tetrisCombatant(a), tetrisCombatant(b)),
+    );
+    this.setFooter(FOOTER_AI);
   }
 
   private startOnline(): void {
@@ -178,7 +236,7 @@ export class GameApp {
     }
     const local = new TetrisEngine();
     this.wireTetris(local);
-    const input = new InputController(local, loadKeymap());
+    const input = new InputController(local, loadKeymap(), this.handling());
     const dummy = new DummyEngine();
     const combatant = tetrisCombatant(local);
 
@@ -190,6 +248,7 @@ export class GameApp {
         this.overlay.show('相手が退出しました', [], [{ label: 'メニューへ', onClick: () => this.showMenu(), primary: true }]),
       onStart: () => {
         this.startSession(new OnlineVersusSession(local, input, dummy, net), false);
+        this.setFooter(FOOTER_ONLINE);
       },
       onError: (message) =>
         this.overlay.show(
@@ -201,13 +260,7 @@ export class GameApp {
     combatant.onAttack((amount) => net.sendAttack(amount));
 
     this.overlay.show('対戦相手を待っています…', [`ルーム: ${room}`], [
-      {
-        label: 'キャンセル',
-        onClick: () => {
-          net.disconnect();
-          this.showMenu();
-        },
-      },
+      { label: 'キャンセル', onClick: () => { net.disconnect(); this.showMenu(); } },
     ]);
     void net.connect(room);
   }
@@ -223,6 +276,11 @@ export class GameApp {
     this.session.tick(dt);
   }
 
+  private renderOptions(): RenderOptions {
+    const s = this.settings.all;
+    return { ghost: s.ghost, grid: s.grid, boardOpacity: s.boardOpacity };
+  }
+
   private render(): void {
     const theme = getTheme();
     this.ctx.fillStyle = theme.background;
@@ -230,16 +288,20 @@ export class GameApp {
     if (!this.session) return;
 
     const blinkOn = Math.floor(performance.now() / 80) % 2 === 0;
+    const opts = this.renderOptions();
+    const nextCount = this.settings.all.nextCount;
     const views = this.session.views();
     for (let i = 0; i < views.length; i++) {
       const board = this.layout.boards[i];
       const view = views[i];
       if (!board || !view) continue;
-      const snap = view.getSnapshot();
-      this.snapshotRenderer.drawBoard(snap, board, blinkOn);
+      const raw = view.getSnapshot();
+      const snap: Snapshot = { ...raw, next: raw.next.slice(0, nextCount) };
+      this.snapshotRenderer.drawBoard(snap, board, blinkOn, opts);
       this.hudRenderer.draw(snap, board);
     }
 
+    this.drawInfo();
     this.drawBanner();
 
     if (this.countdown > 0) {
@@ -247,7 +309,6 @@ export class GameApp {
       return;
     }
 
-    // 決着判定。
     if (this.session.isOver() && !this.resultShown) {
       this.resultShown = true;
       this.showResult();
@@ -255,8 +316,24 @@ export class GameApp {
     }
     if (this.resultShown) return;
 
-    // ポーズの反映（入力やボタンによる phase 変化を観測）。
     this.reflectPause(views[0]?.getSnapshot().phase);
+  }
+
+  private drawInfo(): void {
+    const lines = this.session?.info?.();
+    if (!lines || lines.length === 0) return;
+    const cx = (this.layout.boards[0]?.boardX ?? 0) + ((this.layout.boards[0]?.cols ?? 10) * this.layout.cellSize) / 2;
+    let y = 2;
+    for (const line of lines) {
+      drawText(this.ctx, line, cx, y, {
+        color: getTheme().text,
+        size: Math.max(12, this.layout.cellSize * 0.5),
+        bold: true,
+        align: 'center',
+        shadow: true,
+      });
+      y += this.layout.cellSize * 0.55;
+    }
   }
 
   private reflectPause(phase: string | undefined): void {
@@ -338,7 +415,7 @@ export class GameApp {
     this.ctx.restore();
   }
 
-  // ---- ストア / 設定 -------------------------------------------------
+  // ---- ストア / 設定 / AI -------------------------------------------
 
   private openStore(): void {
     const phase = this.session?.views()[0]?.getSnapshot().phase;
@@ -353,6 +430,36 @@ export class GameApp {
     );
   }
 
+  private openOptions(): void {
+    const phase = this.session?.views()[0]?.getSnapshot().phase;
+    const wasPlaying = this.session !== null && phase === 'playing';
+    if (wasPlaying) this.session?.togglePause();
+    this.overlay.showNode(
+      buildOptionsScreen(
+        this.settings,
+        () => this.audio.setMuted(!this.settings.soundEnabled),
+        () => {
+          this.overlay.hide();
+          if (wasPlaying) this.session?.togglePause();
+          else if (!this.session || this.session.isOver()) this.showMenu();
+        },
+      ),
+    );
+  }
+
+  private toggleAutopilot(): void {
+    if (!this.autopilot) return;
+    this.autopilot.setAi(!this.autopilot.isAi());
+    this.updateAiBtn();
+  }
+
+  private updateAiBtn(): void {
+    const on = this.autopilot?.isAi() ?? false;
+    this.aiBtn.textContent = on ? 'AI代行: ON' : 'AI代行';
+    this.aiBtn.classList.toggle('active', on);
+    this.aiBtn.disabled = !this.autopilot;
+  }
+
   private toggleSound(): void {
     this.settings.update({ soundEnabled: !this.settings.soundEnabled });
     this.audio.setMuted(!this.settings.soundEnabled);
@@ -361,6 +468,18 @@ export class GameApp {
 
   private updateSoundBtn(): void {
     this.soundBtn.textContent = this.settings.soundEnabled ? '♪ オン' : '♪ オフ';
+  }
+
+  private onGlobalKey(e: KeyboardEvent): void {
+    this.audio.resume();
+    if (this.overlay.isVisible()) return;
+    if (e.code === 'KeyR' && this.restart) {
+      e.preventDefault();
+      this.restart();
+    } else if (e.code === 'F1') {
+      e.preventDefault();
+      this.toggleAutopilot();
+    }
   }
 
   // ---- イベント配線（音 + 演出 + 報酬）------------------------------
@@ -403,7 +522,11 @@ export class GameApp {
     });
   }
 
-  // ---- 内部 ----------------------------------------------------------
+  // ---- フッター / レイアウト ----------------------------------------
+
+  private setFooter(text: string): void {
+    this.footer.textContent = text;
+  }
 
   private disposeSession(): void {
     this.session?.dispose();
@@ -417,7 +540,7 @@ export class GameApp {
 
   private computeLayout(count: number): MultiLayout {
     const { cols, rows } = this.boardDims();
-    return multiBoardLayout(window.innerWidth * 0.96, window.innerHeight * 0.9, count, cols, rows);
+    return multiBoardLayout(window.innerWidth * 0.96, window.innerHeight * 0.86, count, cols, rows);
   }
 
   private resize(): void {

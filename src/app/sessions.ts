@@ -5,36 +5,92 @@ import type { DummyEngine } from '../versus/DummyEngine';
 import type { NetClient } from '../net/NetClient';
 import type { InputLike, PlayableEngine, Session } from './Session';
 
-/** 1 人プレイ（テトリス or ぷよ）。 */
+export type GoalType = 'marathon' | 'sprint' | 'ultra';
+export interface Goal {
+  type: GoalType;
+  /** sprint: 目標ライン数。 */
+  lines?: number;
+  /** ultra: 制限時間(ms)。 */
+  timeMs?: number;
+}
+
+function fmtTime(ms: number): string {
+  const t = Math.max(0, ms);
+  const m = Math.floor(t / 60000);
+  const s = Math.floor((t % 60000) / 1000);
+  const cs = Math.floor((t % 1000) / 10);
+  return `${m}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+}
+
+/** 1 人プレイ（テトリス or ぷよ）。任意で追加モードの目標を持つ。 */
 export class SinglePlayerSession implements Session {
   readonly boardCount = 1;
+  private elapsed = 0;
+  private cleared = false;
 
   constructor(
     private readonly engine: PlayableEngine,
     private readonly input: InputLike,
+    private readonly goal: Goal = { type: 'marathon' },
   ) {}
 
   start(): void {
     this.engine.reset();
     this.engine.start();
     this.input.attach();
+    this.elapsed = 0;
+    this.cleared = false;
   }
 
   tick(dt: number): void {
     this.input.update(dt);
     this.engine.tick(dt);
+    if (this.engine.getSnapshot().phase === 'playing') this.elapsed += dt;
   }
 
   views(): EngineView[] {
     return [this.engine];
   }
 
+  private lines(): number {
+    return this.engine.getSnapshot().hud.lines;
+  }
+
   isOver(): boolean {
-    return this.engine.isGameOver();
+    if (this.engine.isGameOver()) return true;
+    if (this.goal.type === 'sprint' && this.lines() >= (this.goal.lines ?? 40)) {
+      this.cleared = true;
+      return true;
+    }
+    if (this.goal.type === 'ultra' && this.elapsed >= (this.goal.timeMs ?? 120000)) {
+      this.cleared = true;
+      return true;
+    }
+    return false;
+  }
+
+  info(): string[] {
+    if (this.goal.type === 'sprint') {
+      const left = Math.max(0, (this.goal.lines ?? 40) - this.lines());
+      return [`のこり ${left} ライン`, fmtTime(this.elapsed)];
+    }
+    if (this.goal.type === 'ultra') {
+      return [`のこり ${fmtTime((this.goal.timeMs ?? 120000) - this.elapsed)}`];
+    }
+    return [];
   }
 
   resultLines(): string[] {
-    return [`スコア ${this.engine.getScore().toLocaleString()}`];
+    const score = this.engine.getScore().toLocaleString();
+    if (this.goal.type === 'sprint') {
+      return this.cleared
+        ? [`タイム ${fmtTime(this.elapsed)}`, `スコア ${score}`]
+        : [`未達 ${this.lines()}/${this.goal.lines ?? 40} ライン`];
+    }
+    if (this.goal.type === 'ultra') {
+      return [`スコア ${score}`, `タイム ${fmtTime(this.elapsed)}`];
+    }
+    return [`スコア ${score}`];
   }
 
   togglePause(): void {

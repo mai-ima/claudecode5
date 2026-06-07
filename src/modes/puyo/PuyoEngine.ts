@@ -104,6 +104,11 @@ export class PuyoEngine implements EngineView {
     return this.score;
   }
 
+  /** AI 用: 現在の組ぷよのコピー（無ければ null）。 */
+  getActive(): PuyoPair | null {
+    return this.active ? { ...this.active } : null;
+  }
+
   getBoard(): PuyoBoard {
     return this.board;
   }

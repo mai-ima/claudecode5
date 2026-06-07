@@ -29,4 +29,6 @@ export interface Session {
   resultLines(): string[];
   togglePause(): void;
   dispose(): void;
+  /** 盤上に小さく表示する追加情報（タイム/目標など）。任意。 */
+  info?(): string[];
 }

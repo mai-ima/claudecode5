@@ -32,6 +32,7 @@ export class InputController {
   constructor(
     private readonly handler: TetrisInputHandler,
     private keymap: KeyMap,
+    private readonly handling: { das: number; arr: number } = { das: TIMING.das, arr: TIMING.arr },
   ) {}
 
   setKeymap(map: KeyMap): void {
@@ -62,7 +63,7 @@ export class InputController {
     if (this.dasDir === 0) return;
     this.dasTimer += dt;
     if (!this.dasCharged) {
-      if (this.dasTimer >= TIMING.das) {
+      if (this.dasTimer >= this.handling.das) {
         this.dasCharged = true;
         this.arrTimer = 0;
         this.moveByDir();
@@ -70,8 +71,8 @@ export class InputController {
       return;
     }
     this.arrTimer += dt;
-    while (this.arrTimer >= TIMING.arr) {
-      this.arrTimer -= TIMING.arr;
+    while (this.arrTimer >= this.handling.arr) {
+      this.arrTimer -= this.handling.arr;
       this.moveByDir();
     }
   }
