@@ -3,6 +3,8 @@ import { decideMove, enumeratePlacements, searchBestMove } from '../modes/tetris
 import type { MoveDecision } from '../modes/tetris/ai';
 import type { TetrisEngine } from '../modes/tetris/TetrisEngine';
 import type { PieceType } from '../modes/tetris/types';
+import { getAiClient } from './worker/aiClient';
+import type { AiClient } from './worker/aiClient';
 
 export type AiLevel = 'easy' | 'normal' | 'hard' | 'pro';
 
@@ -29,16 +31,20 @@ const LEVELS: Record<AiLevel, LevelCfg> = {
 export class TetrisAiController implements InputLike {
   private plan: MoveDecision | null = null;
   private planned = false;
+  private reqToken = 0;
   private moveAcc = 0;
   private stuck = 0;
   private prevX = Number.NaN;
   private didHold = false;
   private off: (() => void) | null = null;
+  private readonly client: AiClient;
 
   constructor(
     private readonly engine: TetrisEngine,
     private level: AiLevel = 'normal',
-  ) {}
+  ) {
+    this.client = getAiClient();
+  }
 
   setLevel(level: AiLevel): void {
     this.level = level;
@@ -49,6 +55,7 @@ export class TetrisAiController implements InputLike {
       this.plan = null;
       this.planned = false;
       this.didHold = false;
+      this.reqToken++; // 直前ピースの応答を無効化。
       this.stuck = 0;
       this.prevX = Number.NaN;
     });
@@ -63,10 +70,10 @@ export class TetrisAiController implements InputLike {
     const active = this.engine.getActive();
     if (!active) return;
 
-    // 計画は 1 ピースにつき 1 回だけ（毎フレーム探索しないことで「かくつき」を防ぐ）。
+    // 計画は 1 ピースにつき 1 回だけ要求（Worker は非同期、未対応時は同期）。
     if (!this.planned) {
-      this.plan = this.think(active.type);
       this.planned = true;
+      this.requestPlan(active.type);
     }
     if (!this.plan) return;
 
@@ -109,27 +116,57 @@ export class TetrisAiController implements InputLike {
     this.prevX = active.x;
   }
 
-  private think(type: PieceType): MoveDecision | null {
+  /** プランを要求（探索が重い上級/プロは Worker、軽い手は同期）。 */
+  private requestPlan(type: PieceType): void {
+    const cfg = LEVELS[this.level];
+
+    // easy はときどきわざと雑な手。軽いので同期。
+    if (cfg.randomness > 0 && Math.random() < cfg.randomness) {
+      const cands = enumeratePlacements(this.engine.getBoard(), type);
+      const pick = cands[Math.floor(Math.random() * cands.length)];
+      this.plan = pick ? { useHold: false, placement: pick.placement } : null;
+      return;
+    }
+
+    // 深い探索は Worker へ（非同期）。
+    if (cfg.searchDepth > 0 && this.client.available()) {
+      const token = ++this.reqToken;
+      void this.client
+        .request({
+          cells: this.engine.getBoard().cellsCopy(),
+          current: type,
+          hold: this.engine.getHold(),
+          next: this.engine.getNextTypes(cfg.searchDepth + 1),
+          depth: cfg.searchDepth,
+          beam: cfg.beamWidth,
+          allowHold: !this.didHold,
+        })
+        .then((move) => {
+          if (token !== this.reqToken) return; // 古い応答は破棄。
+          this.plan = move ?? this.thinkSync(type);
+        });
+      return;
+    }
+
+    this.plan = this.thinkSync(type);
+  }
+
+  private thinkSync(type: PieceType): MoveDecision | null {
     const cfg = LEVELS[this.level];
     const board = this.engine.getBoard();
-
-    // easy はときどきわざと雑な手を選ぶ。
-    if (cfg.randomness > 0 && Math.random() < cfg.randomness) {
-      const cands = enumeratePlacements(board, type);
-      const pick = cands[Math.floor(Math.random() * cands.length)];
-      return pick ? { useHold: false, placement: pick.placement } : null;
-    }
-
-    // 上級/プロはホールド込みビーム探索で複数手先を読む。
     if (cfg.searchDepth > 0) {
       const next = this.engine.getNextTypes(cfg.searchDepth + 1);
-      const move = searchBestMove(board, type, this.engine.getHold(), next, cfg.searchDepth, cfg.beamWidth);
-      if (move) {
-        // 既にこのピースでホールド済みなら再ホールドしない。
-        return this.didHold ? { useHold: false, placement: move.placement } : move;
-      }
+      const move = searchBestMove(
+        board,
+        type,
+        this.engine.getHold(),
+        next,
+        cfg.searchDepth,
+        cfg.beamWidth,
+        !this.didHold,
+      );
+      if (move) return move;
     }
-
     return decideMove(board, type, {
       allowHold: false,
       hold: this.engine.getHold(),

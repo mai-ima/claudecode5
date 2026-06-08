@@ -735,6 +735,12 @@ export class GameApp {
     this.footer.textContent = text;
   }
 
+  /** ランタイム停止（Solid のクリーンアップ用）。 */
+  dispose(): void {
+    this.loop.stop();
+    this.disposeSession();
+  }
+
   private disposeSession(): void {
     this.session?.dispose();
     this.session = null;

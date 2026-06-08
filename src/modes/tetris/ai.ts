@@ -274,6 +274,7 @@ export function searchBestMove(
   next: PieceType[],
   depth: number,
   beamWidth: number,
+  allowHold = true,
 ): MoveDecision | null {
   const startQueue = [current, ...next];
   let beam: SearchState[] = [
@@ -284,7 +285,7 @@ export function searchBestMove(
   let best: SearchState | null = null;
   for (let d = 0; d < plies; d++) {
     const nextStates: SearchState[] = [];
-    for (const s of beam) nextStates.push(...children(s, true));
+    for (const s of beam) nextStates.push(...children(s, allowHold));
     if (nextStates.length === 0) break;
     // 事前計算した score で並べ替え（評価関数の再計算をしない）。
     nextStates.sort((a, b) => b.score - a.score);

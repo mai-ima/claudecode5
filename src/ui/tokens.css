@@ -1,0 +1,50 @@
+/*
+ * デザインシステムのトークン（洗練ミニマル）。
+ * 色はプリセット連動の CSS 変数（--bg/--panel/--accent/...）を別途注入する。
+ * ここでは間隔・角丸・タイポ・影・モーションの土台を定義。最新CSSを活用。
+ */
+:root {
+  /* spacing scale (8px ベース) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  /* radius */
+  --radius-1: 6px;
+  --radius-2: 10px;
+  --radius-3: 16px;
+  --radius-pill: 999px;
+
+  /* typography */
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 20px;
+  --fs-xl: 28px;
+  --fs-2xl: 40px;
+
+  /* elevation */
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-2: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  /* motion */
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* surfaces derived from theme via color-mix (最新CSS) */
+  --surface: color-mix(in oklab, var(--panel, #161b22) 88%, transparent);
+  --surface-2: color-mix(in oklab, var(--panel, #161b22) 70%, transparent);
+  --hairline: color-mix(in oklab, var(--text, #e6edf3) 14%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+  }
+}

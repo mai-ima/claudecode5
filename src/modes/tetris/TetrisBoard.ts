@@ -40,6 +40,11 @@ export class TetrisBoard {
     return new TetrisBoard(this.cells.slice());
   }
 
+  /** セル列のコピー（Worker 転送・シリアライズ用）。 */
+  cellsCopy(): Uint8Array {
+    return this.cells.slice();
+  }
+
   private index(x: number, y: number): number {
     return y * this.width + x;
   }
